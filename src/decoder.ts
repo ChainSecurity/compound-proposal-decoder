@@ -376,6 +376,18 @@ async function decodeActionCall(
        srcArgNames: ['_localToken'],
        dstArgNames: ['_remoteToken', '_to'],
      },
+     '0x504A330327A089d8364C4ab3811Ee26976d388ce': {
+       method: 'depositTo',
+       dstChainId: 59144,
+       srcArgNames: [],
+       dstArgNames: ['to'],
+     },
+     '0x051F1D88f0aF5763fB888eC4378b4D8B29ea3319': {
+       method: 'bridgeToken',
+       dstChainId: 59144,
+       srcArgNames: ['_token'],
+       dstArgNames: ['_recipient'],
+     },
   };
 
   // Bridge detection to set effectiveChainId
