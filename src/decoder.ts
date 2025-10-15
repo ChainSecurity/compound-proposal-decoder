@@ -232,6 +232,23 @@ async function resolveAddressMetadataForArgs(
   return metadata;
 }
 
+// pick selected args by name
+function pickArgs(
+  decoded: { argParams: ParamType[]; rawArgs: unknown[] },
+  names: string[],
+) {
+  const set = new Set(names);
+  const argParams: ParamType[] = [];
+  const rawArgs: unknown[] = [];
+  decoded.argParams.forEach((p, i) => {
+    if (set.has(p.name)) {
+      argParams.push(p);
+      rawArgs.push(decoded.rawArgs[i]);
+    }
+  });
+  return { argParams, rawArgs };
+}
+
 // ---------------------- Core decoding ----------------------
 
 /**
@@ -294,19 +311,6 @@ async function decodeActionCall(
     if (decoded) {
       node.decoded = decoded;
       logger.debug({ signature: decoded.signature }, "Decoded function call");
-
-      try {
-        const addressMetadata = await resolveAddressMetadataForArgs(
-          chainId,
-          decoded.argParams,
-          decoded.rawArgs
-        );
-        if (Object.keys(addressMetadata).length) {
-          node.decoded.addressMetadata = addressMetadata;
-        }
-      } catch (err) {
-        logger.debug({ err, chainId, target: targetCS }, "Failed to enrich address metadata");
-      }
     }
   }
 
@@ -344,9 +348,7 @@ async function decodeActionCall(
     }
   }
 
-  // Normally we resolve address metadata on the transaction chain.
-  // Some bridge contracts calls have parameters that are L2 addresses.
-  // Resolve their metadata on the receiving chain.
+  // Resolve metadata possibly on a different chain for bridges or gateways
   let effectiveChainId = chainId;
 
   // Define bridge contracts and their special handling
@@ -361,27 +363,66 @@ async function decodeActionCall(
     '0xfe5e5D361b2ad62c541bAb87C45a0B9B018389a2': 'sendMessageToChild', // Polygon
   } as const;
 
-  // Check if this is a cross-chain bridge transaction
+  // Token gateways with fixed destination chain and arg roles
+  const TOKEN_GATEWAYS: Record<string, {
+    method: string;
+    dstChainId: number;
+    srcArgNames: string[];
+    dstArgNames: string[];
+  }> = {
+     '0xA5874756416Fa632257eEA380CAbd2E87cED352A': {
+       method: 'bridgeERC20To',
+       dstChainId: 8453,
+       srcArgNames: ['_localToken'],
+       dstArgNames: ['_remoteToken', '_to'],
+     },
+     '0x504A330327A089d8364C4ab3811Ee26976d388ce': {
+       method: 'depositTo',
+       dstChainId: 59144,
+       srcArgNames: [],
+       dstArgNames: ['to'],
+     },
+     '0x051F1D88f0aF5763fB888eC4378b4D8B29ea3319': {
+       method: 'bridgeToken',
+       dstChainId: 59144,
+       srcArgNames: ['_token'],
+       dstArgNames: ['_recipient'],
+     },
+  };
+
+  // Bridge detection to set effectiveChainId
   if (expansion.children.length && node.decoded?.name && targetCS) {
     const expectedMethod = BRIDGE_CONTRACTS[targetCS as keyof typeof BRIDGE_CONTRACTS];
-    
     if (expectedMethod && node.decoded.name === expectedMethod) {
       effectiveChainId = expansion.children[0].nodeInput.chainId;
       logger.debug('Detected bridge transaction. Effective ChainId:', effectiveChainId);
     }
   }
 
-  if (iface) {
-    const decoded = decodeWithInterface(iface, data);
-    if (decoded) {
-      node.decoded = decoded;
-      logger.debug({ signature: decoded.signature }, "Decoded function call");
+  // Metadata enrichment path selection
+  if (node.decoded) {
+    const gw = TOKEN_GATEWAYS[targetCS as keyof typeof TOKEN_GATEWAYS];
 
+    if (gw && node.decoded.name === gw.method) {
+      const srcPart = pickArgs(node.decoded, gw.srcArgNames);
+      const dstPart = pickArgs(node.decoded, gw.dstArgNames);
+
+      try {
+        const [srcMeta, dstMeta] = await Promise.all([
+          resolveAddressMetadataForArgs(chainId, srcPart.argParams, srcPart.rawArgs),
+          resolveAddressMetadataForArgs(gw.dstChainId, dstPart.argParams, dstPart.rawArgs),
+        ]);
+        const merged = { ...srcMeta, ...dstMeta };
+        if (Object.keys(merged).length) node.decoded.addressMetadata = merged;
+      } catch (err) {
+        logger.debug({ err, chainId, dstChainId: gw.dstChainId, target: targetCS }, "Failed token gateway enrichment");
+      }
+    } else {
       try {
         const addressMetadata = await resolveAddressMetadataForArgs(
           effectiveChainId,
-          decoded.argParams,
-          decoded.rawArgs
+          node.decoded.argParams,
+          node.decoded.rawArgs
         );
         if (Object.keys(addressMetadata).length) {
           node.decoded.addressMetadata = addressMetadata;
