@@ -3,7 +3,7 @@ import { checksum } from "@/utils";
 import { getAbiFor, getImplementationAddress, getProviderFor } from "@/ethers";
 import { insight, selectorOfSig, type Handler, type InsightRequest } from "@/registry";
 import { logger } from "@/logger";
-import { getConfiguratorMetadata } from "@/lib/comet-metadata";
+import { getCometMetadata } from "@/lib/comet-metadata";
 
 const UPDATE_ASSET_SUPPLY_CAP_SIG = "updateAssetSupplyCap(address,address,uint128)";
 const UPDATE_ASSET_SUPPLY_CAP_SELECTOR = selectorOfSig(UPDATE_ASSET_SUPPLY_CAP_SIG);
@@ -209,11 +209,11 @@ export const cometConfiguratorInsightsHandler: Handler = {
       const entries: { label: string; value: string }[] = [
         {
           label: "Comet",
-          value: formatCometLabel(ctx.chainId, configuratorProxy, cometProxy),
+          value: formatCometLabel(ctx.chainId, cometProxy),
         },
         {
           label: "Asset",
-          value: formatAssetLabel(ctx.chainId, configuratorProxy, asset),
+          value: formatAssetLabel(ctx.chainId, cometProxy, asset),
         },
         { label: "New cap", value: newCap.toString() },
       ];
@@ -241,7 +241,7 @@ export const cometConfiguratorInsightsHandler: Handler = {
           entries.push({ label: "Status", value: "Configurator ABI missing" });
         }
       } else {
-        const decimals = lookupAssetDecimals(ctx.chainId, configuratorProxy, asset);
+        const decimals = lookupAssetDecimals(ctx.chainId, cometProxy, asset);
         if (decimals !== undefined) {
           entries[2] = {
             label: "New cap",
@@ -268,7 +268,7 @@ export const cometConfiguratorInsightsHandler: Handler = {
       const entries: { label: string; value: string }[] = [
         {
           label: "Comet",
-          value: formatCometLabel(ctx.chainId, configuratorProxy, cometProxy),
+          value: formatCometLabel(ctx.chainId, cometProxy),
         },
         { label: "New slope", value: formatRate(newSlope) },
       ];
@@ -303,23 +303,23 @@ export const cometConfiguratorInsightsHandler: Handler = {
   },
 };
 
-function formatCometLabel(chainId: number, configurator: string, comet: string): string {
-  const metadata = getConfiguratorMetadata(chainId, configurator);
+function formatCometLabel(chainId: number, comet: string): string {
+  const metadata = getCometMetadata(chainId, comet);
   if (!metadata) return comet;
   const label = metadata.name ? `${metadata.name} (${metadata.symbol})` : metadata.symbol;
   return `${label} • ${comet}`;
 }
 
-function formatAssetLabel(chainId: number, configurator: string, asset: string): string {
-  const metadata = getConfiguratorMetadata(chainId, configurator);
+function formatAssetLabel(chainId: number, comet: string, asset: string): string {
+  const metadata = getCometMetadata(chainId, comet);
   if (!metadata) return asset;
   const assetMeta = metadata.assetsByAddress[checksum(asset)];
   if (!assetMeta) return asset;
   return `${assetMeta.symbol}${assetMeta.name ? ` (${assetMeta.name})` : ""} • ${assetMeta.address}`;
 }
 
-function lookupAssetDecimals(chainId: number, configurator: string, asset: string): number | undefined {
-  const metadata = getConfiguratorMetadata(chainId, configurator);
+function lookupAssetDecimals(chainId: number, comet: string, asset: string): number | undefined {
+  const metadata = getCometMetadata(chainId, comet);
   if (!metadata) return undefined;
   return metadata.assetsByAddress[checksum(asset)]?.decimals;
 }

@@ -38,17 +38,10 @@ const CHAIN_DIRECTORY: Record<number, string> = {
 const DEPLOYMENTS_ROOT = join(process.cwd(), "vendor", "comet", "deployments");
 
 type ChainMetadata = {
-  byConfigurator: Map<string, CometMetadata>;
   byComet: Map<string, CometMetadata>;
 };
 
 const chainCache = new Map<number, ChainMetadata>();
-
-export function getConfiguratorMetadata(chainId: number, configuratorAddress: string): CometMetadata | null {
-  const chainMeta = ensureChainMetadata(chainId);
-  if (!chainMeta) return null;
-  return chainMeta.byConfigurator.get(checksum(configuratorAddress)) ?? null;
-}
 
 export function getCometMetadata(chainId: number, cometAddress: string): CometMetadata | null {
   const chainMeta = ensureChainMetadata(chainId);
@@ -61,12 +54,12 @@ function ensureChainMetadata(chainId: number): ChainMetadata | null {
 
   const dirName = CHAIN_DIRECTORY[chainId];
   if (!dirName) {
-    chainCache.set(chainId, { byConfigurator: new Map(), byComet: new Map() });
+    chainCache.set(chainId, { byComet: new Map() });
     return chainCache.get(chainId)!;
   }
 
   const chainPath = join(DEPLOYMENTS_ROOT, dirName);
-  const metadata: ChainMetadata = { byConfigurator: new Map(), byComet: new Map() };
+  const metadata: ChainMetadata = { byComet: new Map() };
 
   if (!existsSync(chainPath)) {
     chainCache.set(chainId, metadata);
@@ -128,7 +121,6 @@ function ensureChainMetadata(chainId: number): ChainMetadata | null {
         assetsByAddress,
       };
 
-      metadata.byConfigurator.set(configuratorAddress, cometMetadata);
       metadata.byComet.set(cometAddress, cometMetadata);
     } catch (err) {
       console.error("Failed to parse comet metadata", chainId, assetDir, err);
