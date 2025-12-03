@@ -162,7 +162,7 @@ export const cometConfiguratorPriceFeedInsightsHandler: Handler = {
             label: "New Price Feed",
             value: `${newPriceFeed} ("${newDescription}")`,
         });
-        const verification = await verifyPriceFeed(provider, newPriceFeed);
+        const verification = await verifyPriceFeed(provider, newPriceFeed, ctx.chainId);
         if (verification) {
             insights.push(insight({
                 title: "Price Feed Verification",
@@ -188,7 +188,21 @@ export const cometConfiguratorPriceFeedInsightsHandler: Handler = {
   },
 };
 
-async function verifyPriceFeed(provider: JsonRpcProvider, oracleAddress: string): Promise<{ label: string; value: string }[] | null> {
+function getChainName(chainId: number): string {
+    switch (chainId) {
+        case 1: return "ethereum";
+        case 10: return "optimism";
+        case 137: return "polygon";
+        case 8453: return "base";
+        case 42161: return "arbitrum";
+        case 59144: return "linea";
+        case 534352: return "scroll";
+        case 5000: return "mantle";
+        default: return "ethereum";
+    }
+}
+
+async function verifyPriceFeed(provider: JsonRpcProvider, oracleAddress: string, chainId: number): Promise<{ label: string; value: string }[] | null> {
     try {
         const iface = new Interface([
             "function snapshotTimestamp() view returns (uint256)",
@@ -207,7 +221,8 @@ async function verifyPriceFeed(provider: JsonRpcProvider, oracleAddress: string)
             return [{ label: "Verification Status", value: "Could not auto-detect oracle type." }];
         }
 
-        const blockData = await fetch(`https://coins.llama.fi/block/ethereum/${snapshotTimestamp}`).then(res => res.json());
+        const chainName = getChainName(chainId);
+        const blockData = await fetch(`https://coins.llama.fi/block/${chainName}/${snapshotTimestamp}`).then(res => res.json());
         const blockNumber = blockData.height;
 
         if (!blockNumber) {
