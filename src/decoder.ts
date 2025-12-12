@@ -32,6 +32,7 @@ import { polygonFxRootHandler } from "./handlers/polygon-fxroot-handler.js";
 import { polygonReceiverHandler } from "./handlers/polygon-receiver-handler.js";
 import { cometConfiguratorInsightsHandler } from "./handlers/comet-configurator-insights.js";
 import { cometConfiguratorPriceFeedInsightsHandler } from "./handlers/comet-configurator-price-feed-insights.js";
+import { cometTrackingSpeedHandler } from "./handlers/comet-tracking-speed-handler.js";
 
 // ---------------------- Constants ----------------------
 
@@ -51,6 +52,7 @@ const registry = new Registry().use([
   polygonReceiverHandler,
   cometConfiguratorInsightsHandler,
   cometConfiguratorPriceFeedInsightsHandler,
+  cometTrackingSpeedHandler,
 ]);
 
 // ---------------------- Small helpers ----------------------
