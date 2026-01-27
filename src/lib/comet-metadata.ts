@@ -2,6 +2,14 @@ import { existsSync, readdirSync, readFileSync } from "fs";
 import { join } from "path";
 import { checksum } from "@/utils";
 
+// Hardcoded labels for addresses not in roots.json
+// Keyed by chainId -> checksummed address -> label
+const HARDCODED_CONTRACT_LABELS: Record<number, Record<string, string>> = {
+  2020: {
+    "0xfa64A82a3d13D4c05d5133E53b2EbB8A0FA9c3F6": "CometProxyAdmin for Compound WETH",
+  },
+};
+
 export type CometAssetMetadata = {
   symbol: string;
   name?: string | null;
@@ -34,6 +42,16 @@ export type CometMetadata = {
   configuratorAddress: string;
   assetsByAddress: Record<string, CometAssetMetadata>;
   rates?: CometRatesConfig;
+  // Additional contract addresses from roots.json
+  rewardsAddress?: string;
+  cometFactoryAddress?: string;
+  bridgeReceiverAddress?: string;
+  bulkerAddress?: string;
+  cometProxyAdminAddress?: string;
+  l2CCIPRouterAddress?: string;
+  l2CCIPOffRampAddress?: string;
+  l2TokenAdminRegistryAddress?: string;
+  l2NativeBridgeAddress?: string;
 };
 
 const CHAIN_DIRECTORY: Record<number, string> = {
@@ -148,6 +166,12 @@ function ensureChainMetadata(chainId: number): ChainMetadata | null {
           }
         : undefined;
 
+      // Helper to optionally checksum address from roots
+      const optionalAddress = (key: string): string | undefined => {
+        const raw = rootsRaw[key];
+        return typeof raw === "string" && raw ? checksum(raw) : undefined;
+      };
+
       const cometMetadata: CometMetadata = {
         name,
         symbol,
@@ -157,6 +181,16 @@ function ensureChainMetadata(chainId: number): ChainMetadata | null {
         configuratorAddress,
         assetsByAddress,
         rates,
+        // Additional contract addresses from roots.json
+        rewardsAddress: optionalAddress("rewards"),
+        cometFactoryAddress: optionalAddress("cometFactory"),
+        bridgeReceiverAddress: optionalAddress("bridgeReceiver"),
+        bulkerAddress: optionalAddress("bulker"),
+        cometProxyAdminAddress: optionalAddress("cometProxyAdmin"),
+        l2CCIPRouterAddress: optionalAddress("l2CCIPRouter"),
+        l2CCIPOffRampAddress: optionalAddress("l2CCIPOffRamp"),
+        l2TokenAdminRegistryAddress: optionalAddress("l2TokenAdminRegistry"),
+        l2NativeBridgeAddress: optionalAddress("roninl2NativeBridge"),
       };
 
       metadata.byComet.set(cometAddress, cometMetadata);
@@ -227,6 +261,41 @@ export function getCometContractLabel(
     if (cometMeta.baseTokenAddress === addrCS) {
       return cometMeta.baseTokenSymbol ?? null;
     }
+    // Check additional contract types from roots.json
+    if (cometMeta.rewardsAddress === addrCS) {
+      return `Rewards for ${cometMeta.name}`;
+    }
+    if (cometMeta.cometFactoryAddress === addrCS) {
+      return `CometFactory for ${cometMeta.name}`;
+    }
+    if (cometMeta.bridgeReceiverAddress === addrCS) {
+      return `BridgeReceiver for ${cometMeta.name}`;
+    }
+    if (cometMeta.bulkerAddress === addrCS) {
+      return `Bulker for ${cometMeta.name}`;
+    }
+    if (cometMeta.cometProxyAdminAddress === addrCS) {
+      return `CometProxyAdmin for ${cometMeta.name}`;
+    }
+    if (cometMeta.l2CCIPRouterAddress === addrCS) {
+      return `L2 CCIP Router for ${cometMeta.name}`;
+    }
+    if (cometMeta.l2CCIPOffRampAddress === addrCS) {
+      return `L2 CCIP OffRamp for ${cometMeta.name}`;
+    }
+    if (cometMeta.l2TokenAdminRegistryAddress === addrCS) {
+      return `L2 Token Admin Registry for ${cometMeta.name}`;
+    }
+    if (cometMeta.l2NativeBridgeAddress === addrCS) {
+      return `L2 Native Bridge for ${cometMeta.name}`;
+    }
+  }
+
+  // Fallback to hardcoded labels for addresses not in roots.json
+  const hardcodedLabels = HARDCODED_CONTRACT_LABELS[chainId];
+  if (hardcodedLabels) {
+    const label = hardcodedLabels[addrCS];
+    if (label) return label;
   }
 
   return null;

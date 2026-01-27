@@ -188,8 +188,17 @@ export async function getContractName(address: string, chainId?: number): Promis
     try {
       const raw = readFileSync(path, "utf8");
       const parsed = JSON.parse(raw);
-      logger.debug({ address, chainId }, "Contract name cache hit");
-      return parsed.name ?? null;
+      if (parsed.name) {
+        logger.debug({ address, chainId }, "Contract name cache hit");
+        return parsed.name;
+      }
+      // Cache has null - try comet-metadata fallback
+      const cometLabel = getCometContractLabel(chainId ?? 1, address);
+      if (cometLabel) {
+        logger.debug({ address, chainId, cometLabel }, "Using comet-metadata for cached null contract name");
+        return cometLabel;
+      }
+      return null;
     } catch {
       // corrupted cache — fall through
       logger.debug({ address, chainId }, "Contract name cache corrupted");
@@ -234,8 +243,14 @@ export async function getContractName(address: string, chainId?: number): Promis
         typeof resp.data?.result === "string" &&
         /Missing|unsupported chainid/i.test(resp.data.result)
       ) {
-        // Chain not supported by Etherscan V2 - return null gracefully
+        // Chain not supported by Etherscan V2 - try comet-metadata fallback
         logger.debug({ address, chainId }, "Chain not supported by Etherscan V2 for contract name");
+        const cometLabel = getCometContractLabel(chainId ?? 1, address);
+        if (cometLabel) {
+          logger.debug({ address, chainId, cometLabel }, "Using comet-metadata for contract name");
+          writeFileSync(path, JSON.stringify({ name: cometLabel }));
+          return cometLabel;
+        }
         writeFileSync(path, JSON.stringify({ name: null }));
         return null;
       } else {
@@ -251,8 +266,14 @@ export async function getContractName(address: string, chainId?: number): Promis
     }
   }
 
-  // Cache sentinel for not found
+  // Cache sentinel for not found - try comet-metadata fallback
   logger.debug({ address, chainId }, "Contract name not found on Etherscan");
+  const cometLabel = getCometContractLabel(chainId ?? 1, address);
+  if (cometLabel) {
+    logger.debug({ address, chainId, cometLabel }, "Using comet-metadata for contract name");
+    writeFileSync(path, JSON.stringify({ name: cometLabel }));
+    return cometLabel;
+  }
   writeFileSync(path, JSON.stringify({ name: null }));
   return null;
 }
