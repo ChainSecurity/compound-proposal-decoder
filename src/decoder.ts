@@ -30,6 +30,8 @@ import { arbitrumRetryableHandler } from "./handlers/arbitrum-inbox-handler.js";
 import { arbitrumReceiverHandler } from "./handlers/arbitrum-receiver-handler.js";
 import { polygonFxRootHandler } from "./handlers/polygon-fxroot-handler.js";
 import { polygonReceiverHandler } from "./handlers/polygon-receiver-handler.js";
+import { ccipRouterHandler } from "./handlers/ccip-router-handler.js";
+import { ccipReceiverHandler } from "./handlers/ccip-receiver-handler.js";
 import { cometConfiguratorInsightsHandler } from "./handlers/comet-configurator-insights.js";
 import { cometConfiguratorPriceFeedInsightsHandler } from "./handlers/comet-configurator-price-feed-insights.js";
 import { cometTrackingSpeedHandler } from "./handlers/comet-tracking-speed-handler.js";
@@ -50,6 +52,8 @@ const registry = new Registry().use([
   arbitrumReceiverHandler,
   polygonFxRootHandler,
   polygonReceiverHandler,
+  ccipRouterHandler,
+  ccipReceiverHandler,
   cometConfiguratorInsightsHandler,
   cometConfiguratorPriceFeedInsightsHandler,
   cometTrackingSpeedHandler,
@@ -365,6 +369,7 @@ async function decodeActionCall(
     '0x6774Bcbd5ceCeF1336b5300fb5186a12DDD8b367': 'sendMessage', // Scroll
     '0x866E82a600A1414e583f7F13623F1aC5d58b0Afa': 'sendMessage', // Base
     '0xfe5e5D361b2ad62c541bAb87C45a0B9B018389a2': 'sendMessageToChild', // Polygon
+    '0x80226fc0Ee2b096224EeAc085Bb9a8cba1146f7D': 'ccipSend', // CCIP Router
   } as const;
 
   // Token gateways with fixed destination chain and arg roles

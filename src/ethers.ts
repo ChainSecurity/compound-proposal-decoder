@@ -6,6 +6,7 @@ import { checksum, ensureDir, requireEnv, sleep } from "@/utils";
 import type { ProposalDetails, AddressMetadata } from "@/types";
 import { JsonRpcProvider, Interface } from "ethers";
 import { logger } from "@/logger";
+import { getLocalAbiFor } from "@/local-abi";
 
 const GOVERNOR_PROXY = "0x309a862bbC1A00e45506cB8A802D1ff10004c8C0";
 const CACHE_DIR = join(process.cwd(), ".cache");
@@ -54,6 +55,7 @@ const RPC_URLS: Record<number, string> = {
   10: process.env.OP_RPC_URL!,
   130: process.env.UNICHAIN_RPC_URL!,
   137: process.env.POLYGON_RPC_URL!,
+  2020: process.env.RONIN_RPC_URL || "https://api.roninchain.com/rpc",
   5000: process.env.MANTLE_RPC_URL!,
   8453: process.env.BASE_RPC_URL!,
   42161: process.env.ARB_RPC_URL!,
@@ -104,7 +106,15 @@ export async function getAbiFor(address: string, chainId?: number): Promise<Inte
     try {
       const raw = readFileSync(path, "utf8");
       const parsed = JSON.parse(raw);
-      if (parsed?.__note === "unverified_or_missing") return null;
+      if (parsed?.__note === "unverified_or_missing" || parsed?.__note === "unsupported_chain") {
+        // Try local ABI fallback for known contracts
+        const localAbi = getLocalAbiFor(address, chainId ?? 1);
+        if (localAbi) {
+          logger.debug({ address, chainId }, "Using local ABI fallback");
+          return localAbi;
+        }
+        return null;
+      }
       logger.debug({ address, chainId }, "ABI cache hit");
       return new Interface(parsed as JsonFragment[]);
     } catch {
@@ -137,11 +147,24 @@ export async function getAbiFor(address: string, chainId?: number): Promise<Inte
         typeof result === "string" &&
         /Missing|unsupported chainid/i.test(result)
       ) {
-        throw new Error(`Etherscan V2 error: ${result} (chainId=${chainId ?? 1}).`);
+        // Chain not supported by Etherscan V2 - try local ABI fallback
+        logger.debug({ address, chainId }, "Chain not supported by Etherscan V2");
+        writeFileSync(path, JSON.stringify({ __note: "unsupported_chain" }, null, 2));
+        const localAbi = getLocalAbiFor(address, chainId ?? 1);
+        if (localAbi) {
+          logger.debug({ address, chainId }, "Using local ABI fallback");
+          return localAbi;
+        }
+        return null;
       } else {
-        // unverified or other failure
+        // unverified or other failure - try local ABI fallback
         logger.debug({ address, chainId }, "Contract not verified on Etherscan");
         writeFileSync(path, JSON.stringify({ __note: "unverified_or_missing" }, null, 2));
+        const localAbi = getLocalAbiFor(address, chainId ?? 1);
+        if (localAbi) {
+          logger.debug({ address, chainId }, "Using local ABI fallback");
+          return localAbi;
+        }
         return null;
       }
     } catch (err: unknown) {
@@ -210,7 +233,10 @@ export async function getContractName(address: string, chainId?: number): Promis
         typeof resp.data?.result === "string" &&
         /Missing|unsupported chainid/i.test(resp.data.result)
       ) {
-        throw new Error(`Etherscan V2 error: ${resp.data.result} (chainId=${chainId ?? 1}).`);
+        // Chain not supported by Etherscan V2 - return null gracefully
+        logger.debug({ address, chainId }, "Chain not supported by Etherscan V2 for contract name");
+        writeFileSync(path, JSON.stringify({ name: null }));
+        return null;
       } else {
         // Etherscan can be flaky — back off and retry
         await sleep(1000 * (attempt + 1));
