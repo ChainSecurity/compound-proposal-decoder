@@ -37,6 +37,7 @@ import { assetConfigInsightsHandler } from "./handlers/asset-config-insights.js"
 import { addressVerificationHandler } from "./handlers/address-verification-handler.js";
 import { cometConfiguratorPriceFeedInsightsHandler } from "./handlers/comet-configurator-price-feed-insights.js";
 import { cometTrackingSpeedHandler } from "./handlers/comet-tracking-speed-handler.js";
+import { getCometContractLabel } from "./lib/comet-metadata.js";
 
 // ---------------------- Constants ----------------------
 
@@ -96,6 +97,83 @@ function decodeWithInterface(iface: Interface, calldata: string): DecodedFunctio
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Extract a cometProxy address from decoded function arguments.
+ * This is used to refine contract labels for shared contracts (e.g., Configurator).
+ * Looks for parameters named "cometProxy", "comet", or the first address parameter
+ * in functions that are known Configurator methods.
+ */
+function extractCometProxyHint(decoded: DecodedFunction): string | null {
+  if (!decoded.argParams || !decoded.rawArgs) return null;
+
+  // Known Configurator function patterns where first param is cometProxy
+  const CONFIGURATOR_FUNCTIONS = [
+    "setBaseTokenPriceFeed",
+    "updateAsset",
+    "updateAssetPriceFeed",
+    "updateAssetBorrowCollateralFactor",
+    "updateAssetLiquidateCollateralFactor",
+    "updateAssetLiquidationFactor",
+    "updateAssetSupplyCap",
+    "setBorrowPerYearInterestRateBase",
+    "setBorrowPerYearInterestRateSlopeLow",
+    "setBorrowPerYearInterestRateSlopeHigh",
+    "setBorrowKink",
+    "setSupplyPerYearInterestRateBase",
+    "setSupplyPerYearInterestRateSlopeLow",
+    "setSupplyPerYearInterestRateSlopeHigh",
+    "setSupplyKink",
+    "setStoreFrontPriceFactor",
+    "setBaseTrackingSupplySpeed",
+    "setBaseTrackingBorrowSpeed",
+    "setBaseMinForRewards",
+    "setBaseBorrowMin",
+    "setTargetReserves",
+  ];
+
+  // CometProxyAdmin functions where cometProxy is the second param
+  const PROXY_ADMIN_FUNCTIONS = ["deployAndUpgradeTo"];
+
+  // Check if this is a known Configurator function
+  const isConfiguratorFunction = CONFIGURATOR_FUNCTIONS.some(
+    (name) => decoded.name === name || decoded.name?.startsWith(name)
+  );
+
+  // Check if this is a CometProxyAdmin function
+  const isProxyAdminFunction = PROXY_ADMIN_FUNCTIONS.some(
+    (name) => decoded.name === name || decoded.name?.startsWith(name)
+  );
+
+  for (let i = 0; i < decoded.argParams.length; i++) {
+    const param = decoded.argParams[i];
+    const arg = decoded.rawArgs[i];
+
+    // Look for parameters explicitly named cometProxy or comet
+    const paramName = param.name?.toLowerCase() ?? "";
+    if (paramName === "cometproxy" || paramName === "comet") {
+      if (typeof arg === "string" && /^0x[0-9a-fA-F]{40}$/.test(arg)) {
+        return checksum(arg);
+      }
+    }
+
+    // For known Configurator functions, use the first address parameter
+    if (isConfiguratorFunction && i === 0 && param.type === "address") {
+      if (typeof arg === "string" && /^0x[0-9a-fA-F]{40}$/.test(arg)) {
+        return checksum(arg);
+      }
+    }
+
+    // For CometProxyAdmin functions, use the second address parameter (cometProxy)
+    if (isProxyAdminFunction && i === 1 && param.type === "address") {
+      if (typeof arg === "string" && /^0x[0-9a-fA-F]{40}$/.test(arg)) {
+        return checksum(arg);
+      }
+    }
+  }
+
+  return null;
 }
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -323,6 +401,20 @@ async function decodeActionCall(
     if (decoded) {
       node.decoded = decoded;
       logger.debug({ signature: decoded.signature }, "Decoded function call");
+
+      // Refine target contract name if this is a shared contract (e.g., Configurator)
+      // and we can identify the market from a cometProxy argument
+      const cometProxyHint = extractCometProxyHint(decoded);
+      if (cometProxyHint) {
+        const refinedLabel = getCometContractLabel(chainId, targetCS, cometProxyHint);
+        if (refinedLabel && refinedLabel !== node.targetContractName) {
+          logger.debug(
+            { target: targetCS, oldName: node.targetContractName, newName: refinedLabel, hint: cometProxyHint },
+            "Refined target name using cometProxy hint"
+          );
+          node.targetContractName = refinedLabel;
+        }
+      }
     }
   }
 

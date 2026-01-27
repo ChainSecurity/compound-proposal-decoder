@@ -1,15 +1,49 @@
-import { Interface, JsonRpcProvider, formatUnits } from "ethers";
+import { Interface, JsonRpcProvider } from "ethers";
 import { checksum } from "@/utils";
 import { getAbiFor, getImplementationAddress, getProviderFor } from "@/ethers";
 import { insight, selectorOfSig, type Handler, type InsightRequest } from "@/registry";
 import { logger } from "@/logger";
 import { getCometMetadata } from "@/lib/comet-metadata";
+import { formatRateAsAPY, formatKink, formatSupplyCap, compareValues } from "@/lib/format-utils";
 
 const UPDATE_ASSET_SUPPLY_CAP_SIG = "updateAssetSupplyCap(address,address,uint128)";
 const UPDATE_ASSET_SUPPLY_CAP_SELECTOR = selectorOfSig(UPDATE_ASSET_SUPPLY_CAP_SIG);
 
 const SET_BORROW_SLOPE_LOW_SIG = "setBorrowPerYearInterestRateSlopeLow(address,uint64)";
 const SET_BORROW_SLOPE_LOW_SELECTOR = selectorOfSig(SET_BORROW_SLOPE_LOW_SIG);
+
+const SET_BORROW_SLOPE_HIGH_SIG = "setBorrowPerYearInterestRateSlopeHigh(address,uint64)";
+const SET_BORROW_SLOPE_HIGH_SELECTOR = selectorOfSig(SET_BORROW_SLOPE_HIGH_SIG);
+
+const SET_BORROW_BASE_SIG = "setBorrowPerYearInterestRateBase(address,uint64)";
+const SET_BORROW_BASE_SELECTOR = selectorOfSig(SET_BORROW_BASE_SIG);
+
+const SET_SUPPLY_SLOPE_LOW_SIG = "setSupplyPerYearInterestRateSlopeLow(address,uint64)";
+const SET_SUPPLY_SLOPE_LOW_SELECTOR = selectorOfSig(SET_SUPPLY_SLOPE_LOW_SIG);
+
+const SET_SUPPLY_SLOPE_HIGH_SIG = "setSupplyPerYearInterestRateSlopeHigh(address,uint64)";
+const SET_SUPPLY_SLOPE_HIGH_SELECTOR = selectorOfSig(SET_SUPPLY_SLOPE_HIGH_SIG);
+
+const SET_SUPPLY_BASE_SIG = "setSupplyPerYearInterestRateBase(address,uint64)";
+const SET_SUPPLY_BASE_SELECTOR = selectorOfSig(SET_SUPPLY_BASE_SIG);
+
+const SET_BORROW_KINK_SIG = "setBorrowKink(address,uint64)";
+const SET_BORROW_KINK_SELECTOR = selectorOfSig(SET_BORROW_KINK_SIG);
+
+const SET_SUPPLY_KINK_SIG = "setSupplyKink(address,uint64)";
+const SET_SUPPLY_KINK_SELECTOR = selectorOfSig(SET_SUPPLY_KINK_SIG);
+
+// All rate/kink selectors for matching
+const RATE_SELECTORS = [
+  SET_BORROW_SLOPE_LOW_SELECTOR,
+  SET_BORROW_SLOPE_HIGH_SELECTOR,
+  SET_BORROW_BASE_SELECTOR,
+  SET_SUPPLY_SLOPE_LOW_SELECTOR,
+  SET_SUPPLY_SLOPE_HIGH_SELECTOR,
+  SET_SUPPLY_BASE_SELECTOR,
+  SET_BORROW_KINK_SELECTOR,
+  SET_SUPPLY_KINK_SELECTOR,
+];
 
 const CONFIG_GETTER = "getConfiguration(address)";
 
@@ -169,28 +203,70 @@ function inferDecimalsFromAssetConfig(asset: AssetConfig): number {
   return Math.min(Math.max(0, zeros), 36);
 }
 
-function formatAmountWithDecimals(value: bigint, decimals: number): string {
-  try {
-    return `${formatUnits(value, decimals)} (raw ${value.toString()})`;
-  } catch {
-    return value.toString();
-  }
-}
+type RateUpdateInfo = {
+  selector: string;
+  title: string;
+  configKey: keyof Configuration;
+  isKink: boolean;
+};
 
-function formatRate(value: bigint): string {
-  try {
-    return `${formatUnits(value, 18)} (raw ${value.toString()})`;
-  } catch {
-    return value.toString();
-  }
-}
+const RATE_UPDATE_INFO: Record<string, RateUpdateInfo> = {
+  [SET_BORROW_SLOPE_LOW_SELECTOR]: {
+    selector: SET_BORROW_SLOPE_LOW_SELECTOR,
+    title: "Borrow Slope Low Update",
+    configKey: "borrowPerYearInterestRateSlopeLow",
+    isKink: false,
+  },
+  [SET_BORROW_SLOPE_HIGH_SELECTOR]: {
+    selector: SET_BORROW_SLOPE_HIGH_SELECTOR,
+    title: "Borrow Slope High Update",
+    configKey: "borrowPerYearInterestRateSlopeHigh",
+    isKink: false,
+  },
+  [SET_BORROW_BASE_SELECTOR]: {
+    selector: SET_BORROW_BASE_SELECTOR,
+    title: "Borrow Base Rate Update",
+    configKey: "borrowPerYearInterestRateBase",
+    isKink: false,
+  },
+  [SET_SUPPLY_SLOPE_LOW_SELECTOR]: {
+    selector: SET_SUPPLY_SLOPE_LOW_SELECTOR,
+    title: "Supply Slope Low Update",
+    configKey: "supplyPerYearInterestRateSlopeLow",
+    isKink: false,
+  },
+  [SET_SUPPLY_SLOPE_HIGH_SELECTOR]: {
+    selector: SET_SUPPLY_SLOPE_HIGH_SELECTOR,
+    title: "Supply Slope High Update",
+    configKey: "supplyPerYearInterestRateSlopeHigh",
+    isKink: false,
+  },
+  [SET_SUPPLY_BASE_SELECTOR]: {
+    selector: SET_SUPPLY_BASE_SELECTOR,
+    title: "Supply Base Rate Update",
+    configKey: "supplyPerYearInterestRateBase",
+    isKink: false,
+  },
+  [SET_BORROW_KINK_SELECTOR]: {
+    selector: SET_BORROW_KINK_SELECTOR,
+    title: "Borrow Kink Update",
+    configKey: "borrowKink",
+    isKink: true,
+  },
+  [SET_SUPPLY_KINK_SELECTOR]: {
+    selector: SET_SUPPLY_KINK_SELECTOR,
+    title: "Supply Kink Update",
+    configKey: "supplyKink",
+    isKink: true,
+  },
+};
 
 export const cometConfiguratorInsightsHandler: Handler = {
   name: "Configurator storage insights",
   match: (ctx) => {
     if (!ctx.rawCalldata || ctx.rawCalldata.length < 10) return false;
     const selector = ctx.rawCalldata.slice(0, 10);
-    return selector === UPDATE_ASSET_SUPPLY_CAP_SELECTOR || selector === SET_BORROW_SLOPE_LOW_SELECTOR;
+    return selector === UPDATE_ASSET_SUPPLY_CAP_SELECTOR || RATE_SELECTORS.includes(selector);
   },
   expand: async (ctx) => {
     const selector = ctx.rawCalldata.slice(0, 10);
@@ -206,6 +282,10 @@ export const cometConfiguratorInsightsHandler: Handler = {
       const asset = checksum(String(assetArg));
       const newCap = typeof newCapArg === "bigint" ? newCapArg : BigInt(String(newCapArg));
 
+      const metadata = getCometMetadata(ctx.chainId, cometProxy);
+      const assetMeta = metadata?.assetsByAddress[asset];
+      const assetSymbol = assetMeta?.symbol;
+
       const entries: { label: string; value: string }[] = [
         {
           label: "Comet",
@@ -215,7 +295,6 @@ export const cometConfiguratorInsightsHandler: Handler = {
           label: "Asset",
           value: formatAssetLabel(ctx.chainId, cometProxy, asset),
         },
-        { label: "New cap", value: newCap.toString() },
       ];
 
       const provider = getProviderSafe(ctx.chainId);
@@ -227,13 +306,11 @@ export const cometConfiguratorInsightsHandler: Handler = {
             const assetConfig = config.assetConfigs.find((cfg) => cfg.asset === asset);
             if (assetConfig) {
               const decimals = inferDecimalsFromAssetConfig(assetConfig);
-              entries.splice(2, 1, {
-                label: "New cap",
-                value: formatAmountWithDecimals(newCap, decimals),
-              });
-              entries.splice(2, 0, {
-                label: "Current cap",
-                value: formatAmountWithDecimals(assetConfig.supplyCap, decimals),
+              const currentCapFormatted = formatSupplyCap(assetConfig.supplyCap, decimals, assetSymbol);
+              const newCapFormatted = formatSupplyCap(newCap, decimals, assetSymbol);
+              entries.push({
+                label: "Supply Cap",
+                value: compareValues(currentCapFormatted, newCapFormatted),
               });
             }
           }
@@ -243,10 +320,12 @@ export const cometConfiguratorInsightsHandler: Handler = {
       } else {
         const decimals = lookupAssetDecimals(ctx.chainId, cometProxy, asset);
         if (decimals !== undefined) {
-          entries[2] = {
-            label: "New cap",
-            value: formatAmountWithDecimals(newCap, decimals),
-          };
+          entries.push({
+            label: "New Supply Cap",
+            value: formatSupplyCap(newCap, decimals, assetSymbol),
+          });
+        } else {
+          entries.push({ label: "New Supply Cap", value: newCap.toString() });
         }
         entries.push({ label: "Status", value: "Configure RPC to fetch current cap" });
       }
@@ -259,18 +338,22 @@ export const cometConfiguratorInsightsHandler: Handler = {
       );
     }
 
-    if (selector === SET_BORROW_SLOPE_LOW_SELECTOR) {
-      const [cometProxyArg, newSlopeArg] = ctx.parsed.args ?? [];
-      if (!cometProxyArg || newSlopeArg === undefined) return insights;
+    // Handle all rate/kink updates
+    const rateInfo = RATE_UPDATE_INFO[selector];
+    if (rateInfo) {
+      const [cometProxyArg, newValueArg] = ctx.parsed.args ?? [];
+      if (!cometProxyArg || newValueArg === undefined) return insights;
       const cometProxy = checksum(String(cometProxyArg));
-      const newSlope = typeof newSlopeArg === "bigint" ? newSlopeArg : BigInt(String(newSlopeArg));
+      const newValue = typeof newValueArg === "bigint" ? newValueArg : BigInt(String(newValueArg));
+
+      const formatValue = rateInfo.isKink ? formatKink : formatRateAsAPY;
+      const newValueFormatted = formatValue(newValue);
 
       const entries: { label: string; value: string }[] = [
         {
           label: "Comet",
           value: formatCometLabel(ctx.chainId, cometProxy),
         },
-        { label: "New slope", value: formatRate(newSlope) },
       ];
 
       const provider = getProviderSafe(ctx.chainId);
@@ -279,21 +362,36 @@ export const cometConfiguratorInsightsHandler: Handler = {
         if (iface) {
           const config = await getConfiguration(iface, provider, configuratorProxy, cometProxy);
           if (config) {
-            entries.splice(1, 0, {
-              label: "Current slope",
-              value: formatRate(config.borrowPerYearInterestRateSlopeLow),
+            const currentValue = config[rateInfo.configKey] as bigint;
+            const currentFormatted = formatValue(currentValue);
+            entries.push({
+              label: rateInfo.isKink ? "Kink" : "Rate",
+              value: compareValues(currentFormatted, newValueFormatted),
+            });
+          } else {
+            entries.push({
+              label: rateInfo.isKink ? "New Kink" : "New Rate",
+              value: newValueFormatted,
             });
           }
         } else {
           entries.push({ label: "Status", value: "Configurator ABI missing" });
+          entries.push({
+            label: rateInfo.isKink ? "New Kink" : "New Rate",
+            value: newValueFormatted,
+          });
         }
       } else {
-        entries.push({ label: "Status", value: "Configure RPC to fetch current slope" });
+        entries.push({
+          label: rateInfo.isKink ? "New Kink" : "New Rate",
+          value: newValueFormatted,
+        });
+        entries.push({ label: "Status", value: "Configure RPC to fetch current value" });
       }
 
       insights.push(
         insight({
-          title: "Borrow Slope Low Update",
+          title: rateInfo.title,
           entries,
         })
       );

@@ -5,9 +5,7 @@ import { checksum } from "@/utils";
 // Hardcoded labels for addresses not in roots.json
 // Keyed by chainId -> checksummed address -> label
 const HARDCODED_CONTRACT_LABELS: Record<number, Record<string, string>> = {
-  2020: {
-    "0xfa64A82a3d13D4c05d5133E53b2EbB8A0FA9c3F6": "CometProxyAdmin for Compound WETH",
-  },
+  // Add hardcoded labels here if needed for addresses not in roots.json
 };
 
 export type CometAssetMetadata = {
@@ -238,57 +236,37 @@ export function getCometAssetMetadata(
 /**
  * Get a label for a known Comet contract address.
  * Returns the contract type and market name if found.
+ *
+ * @param chainId - The chain ID
+ * @param contractAddress - The contract address to get a label for
+ * @param cometProxyHint - Optional hint: if provided and the contract is shared
+ *                         across markets (e.g., Configurator), use this Comet
+ *                         address to determine which market's label to return.
  */
 export function getCometContractLabel(
   chainId: number,
-  contractAddress: string
+  contractAddress: string,
+  cometProxyHint?: string
 ): string | null {
   const chainMeta = ensureChainMetadata(chainId);
   if (!chainMeta) return null;
 
   const addrCS = checksum(contractAddress);
+  const hintCS = cometProxyHint ? checksum(cometProxyHint) : null;
 
+  // If we have a hint, try to look up that specific market first
+  if (hintCS) {
+    const hintedMeta = chainMeta.byComet.get(hintCS);
+    if (hintedMeta) {
+      const label = getLabelFromMetadata(hintedMeta, addrCS);
+      if (label) return label;
+    }
+  }
+
+  // Fall back to searching all markets
   for (const cometMeta of chainMeta.byComet.values()) {
-    // Check if it's the comet itself
-    if (cometMeta.cometAddress === addrCS) {
-      return `${cometMeta.name} (${cometMeta.symbol})`;
-    }
-    // Check if it's the configurator
-    if (cometMeta.configuratorAddress === addrCS) {
-      return `Configurator for ${cometMeta.name}`;
-    }
-    // Check if it's the base token
-    if (cometMeta.baseTokenAddress === addrCS) {
-      return cometMeta.baseTokenSymbol ?? null;
-    }
-    // Check additional contract types from roots.json
-    if (cometMeta.rewardsAddress === addrCS) {
-      return `Rewards for ${cometMeta.name}`;
-    }
-    if (cometMeta.cometFactoryAddress === addrCS) {
-      return `CometFactory for ${cometMeta.name}`;
-    }
-    if (cometMeta.bridgeReceiverAddress === addrCS) {
-      return `BridgeReceiver for ${cometMeta.name}`;
-    }
-    if (cometMeta.bulkerAddress === addrCS) {
-      return `Bulker for ${cometMeta.name}`;
-    }
-    if (cometMeta.cometProxyAdminAddress === addrCS) {
-      return `CometProxyAdmin for ${cometMeta.name}`;
-    }
-    if (cometMeta.l2CCIPRouterAddress === addrCS) {
-      return `L2 CCIP Router for ${cometMeta.name}`;
-    }
-    if (cometMeta.l2CCIPOffRampAddress === addrCS) {
-      return `L2 CCIP OffRamp for ${cometMeta.name}`;
-    }
-    if (cometMeta.l2TokenAdminRegistryAddress === addrCS) {
-      return `L2 Token Admin Registry for ${cometMeta.name}`;
-    }
-    if (cometMeta.l2NativeBridgeAddress === addrCS) {
-      return `L2 Native Bridge for ${cometMeta.name}`;
-    }
+    const label = getLabelFromMetadata(cometMeta, addrCS);
+    if (label) return label;
   }
 
   // Fallback to hardcoded labels for addresses not in roots.json
@@ -298,5 +276,52 @@ export function getCometContractLabel(
     if (label) return label;
   }
 
+  return null;
+}
+
+/**
+ * Helper to get a label for a contract address from a specific market's metadata.
+ */
+function getLabelFromMetadata(cometMeta: CometMetadata, addrCS: string): string | null {
+  // Check if it's the comet itself
+  if (cometMeta.cometAddress === addrCS) {
+    return `${cometMeta.name} (${cometMeta.symbol})`;
+  }
+  // Check if it's the configurator
+  if (cometMeta.configuratorAddress === addrCS) {
+    return `Configurator for ${cometMeta.name}`;
+  }
+  // Check if it's the base token
+  if (cometMeta.baseTokenAddress === addrCS) {
+    return cometMeta.baseTokenSymbol ?? null;
+  }
+  // Check additional contract types from roots.json
+  if (cometMeta.rewardsAddress === addrCS) {
+    return `Rewards for ${cometMeta.name}`;
+  }
+  if (cometMeta.cometFactoryAddress === addrCS) {
+    return `CometFactory for ${cometMeta.name}`;
+  }
+  if (cometMeta.bridgeReceiverAddress === addrCS) {
+    return `BridgeReceiver for ${cometMeta.name}`;
+  }
+  if (cometMeta.bulkerAddress === addrCS) {
+    return `Bulker for ${cometMeta.name}`;
+  }
+  if (cometMeta.cometProxyAdminAddress === addrCS) {
+    return `CometProxyAdmin for ${cometMeta.name}`;
+  }
+  if (cometMeta.l2CCIPRouterAddress === addrCS) {
+    return `L2 CCIP Router for ${cometMeta.name}`;
+  }
+  if (cometMeta.l2CCIPOffRampAddress === addrCS) {
+    return `L2 CCIP OffRamp for ${cometMeta.name}`;
+  }
+  if (cometMeta.l2TokenAdminRegistryAddress === addrCS) {
+    return `L2 Token Admin Registry for ${cometMeta.name}`;
+  }
+  if (cometMeta.l2NativeBridgeAddress === addrCS) {
+    return `L2 Native Bridge for ${cometMeta.name}`;
+  }
   return null;
 }
