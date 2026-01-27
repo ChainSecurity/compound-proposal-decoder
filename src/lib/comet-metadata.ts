@@ -7,6 +7,22 @@ export type CometAssetMetadata = {
   name?: string | null;
   address: string;
   decimals?: number;
+  // Configuration values (from configuration.json)
+  borrowCF?: number;
+  liquidateCF?: number;
+  liquidationFactor?: number;
+  supplyCap?: string; // Raw string like "400000e6"
+};
+
+export type CometRatesConfig = {
+  borrowBase?: number;
+  borrowSlopeLow?: number;
+  borrowKink?: number;
+  borrowSlopeHigh?: number;
+  supplyBase?: number;
+  supplySlopeLow?: number;
+  supplyKink?: number;
+  supplySlopeHigh?: number;
 };
 
 export type CometMetadata = {
@@ -17,6 +33,7 @@ export type CometMetadata = {
   cometAddress: string;
   configuratorAddress: string;
   assetsByAddress: Record<string, CometAssetMetadata>;
+  rates?: CometRatesConfig;
 };
 
 const CHAIN_DIRECTORY: Record<number, string> = {
@@ -33,6 +50,7 @@ const CHAIN_DIRECTORY: Record<number, string> = {
   137: "polygon",
   314: "mantle",
   5000: "mantle",
+  2020: "ronin",
 };
 
 const DEPLOYMENTS_ROOT = join(process.cwd(), "vendor", "comet", "deployments");
@@ -96,6 +114,10 @@ function ensureChainMetadata(chainId: number): ChainMetadata | null {
             name: assetValue?.name ?? null,
             address: checksum(address),
             decimals: parseOptionalNumber(assetValue?.decimals),
+            borrowCF: parseOptionalNumber(assetValue?.borrowCF),
+            liquidateCF: parseOptionalNumber(assetValue?.liquidateCF),
+            liquidationFactor: parseOptionalNumber(assetValue?.liquidationFactor),
+            supplyCap: typeof assetValue?.supplyCap === "string" ? assetValue.supplyCap : undefined,
           };
           assetsByAddress[entry.address] = entry;
         }
@@ -111,6 +133,21 @@ function ensureChainMetadata(chainId: number): ChainMetadata | null {
           ? checksum(baseTokenAddressRaw)
           : undefined;
 
+      // Parse rates configuration
+      const ratesRaw = configurationRaw.rates as Record<string, unknown> | undefined;
+      const rates: CometRatesConfig | undefined = ratesRaw
+        ? {
+            borrowBase: parseOptionalNumber(ratesRaw.borrowBase),
+            borrowSlopeLow: parseOptionalNumber(ratesRaw.borrowSlopeLow),
+            borrowKink: parseOptionalNumber(ratesRaw.borrowKink),
+            borrowSlopeHigh: parseOptionalNumber(ratesRaw.borrowSlopeHigh),
+            supplyBase: parseOptionalNumber(ratesRaw.supplyBase),
+            supplySlopeLow: parseOptionalNumber(ratesRaw.supplySlopeLow),
+            supplyKink: parseOptionalNumber(ratesRaw.supplyKink),
+            supplySlopeHigh: parseOptionalNumber(ratesRaw.supplySlopeHigh),
+          }
+        : undefined;
+
       const cometMetadata: CometMetadata = {
         name,
         symbol,
@@ -119,6 +156,7 @@ function ensureChainMetadata(chainId: number): ChainMetadata | null {
         cometAddress,
         configuratorAddress,
         assetsByAddress,
+        rates,
       };
 
       metadata.byComet.set(cometAddress, cometMetadata);
