@@ -34,6 +34,7 @@ import { ccipRouterHandler } from "./handlers/ccip-router-handler.js";
 import { ccipReceiverHandler } from "./handlers/ccip-receiver-handler.js";
 import { cometConfiguratorInsightsHandler } from "./handlers/comet-configurator-insights.js";
 import { assetConfigInsightsHandler } from "./handlers/asset-config-insights.js";
+import { addressVerificationHandler } from "./handlers/address-verification-handler.js";
 import { cometConfiguratorPriceFeedInsightsHandler } from "./handlers/comet-configurator-price-feed-insights.js";
 import { cometTrackingSpeedHandler } from "./handlers/comet-tracking-speed-handler.js";
 
@@ -57,6 +58,7 @@ const registry = new Registry().use([
   ccipReceiverHandler,
   cometConfiguratorInsightsHandler,
   assetConfigInsightsHandler,
+  addressVerificationHandler,
   cometConfiguratorPriceFeedInsightsHandler,
   cometTrackingSpeedHandler,
 ]);
