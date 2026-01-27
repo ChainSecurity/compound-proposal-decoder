@@ -7,6 +7,7 @@ import type { ProposalDetails, AddressMetadata } from "@/types";
 import { JsonRpcProvider, Interface } from "ethers";
 import { logger } from "@/logger";
 import { getLocalAbiFor } from "@/local-abi";
+import { getCometAssetMetadata, getCometContractLabel } from "@/lib/comet-metadata";
 
 const GOVERNOR_PROXY = "0x309a862bbC1A00e45506cB8A802D1ff10004c8C0";
 const CACHE_DIR = join(process.cwd(), ".cache");
@@ -468,6 +469,24 @@ export async function getAddressMetadata(
       { address, chainId, err: infoResult.reason },
       "Failed to resolve Etherscan tag for address argument"
     );
+  }
+
+  // Fallback to comet-metadata for chains not supported by Etherscan
+  if (!metadata.contractName && !metadata.tokenSymbol && chainId) {
+    // Try to find as a token/asset
+    const assetMeta = getCometAssetMetadata(chainId, address);
+    if (assetMeta) {
+      metadata.tokenSymbol = assetMeta.symbol;
+      if (assetMeta.name) {
+        metadata.contractName = assetMeta.name;
+      }
+    } else {
+      // Try to find as a known contract
+      const contractLabel = getCometContractLabel(chainId, address);
+      if (contractLabel) {
+        metadata.contractName = contractLabel;
+      }
+    }
   }
 
   return metadata;

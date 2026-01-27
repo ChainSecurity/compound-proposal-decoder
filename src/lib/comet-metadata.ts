@@ -178,3 +178,56 @@ function parseOptionalNumber(value: unknown): number | undefined {
   }
   return undefined;
 }
+
+/**
+ * Get asset metadata by address across all markets for a chain.
+ * Useful for looking up token symbols when Etherscan doesn't support the chain.
+ */
+export function getCometAssetMetadata(
+  chainId: number,
+  assetAddress: string
+): CometAssetMetadata | null {
+  const chainMeta = ensureChainMetadata(chainId);
+  if (!chainMeta) return null;
+
+  const assetCS = checksum(assetAddress);
+
+  // Search across all markets for this asset
+  for (const cometMeta of chainMeta.byComet.values()) {
+    const assetMeta = cometMeta.assetsByAddress[assetCS];
+    if (assetMeta) return assetMeta;
+  }
+
+  return null;
+}
+
+/**
+ * Get a label for a known Comet contract address.
+ * Returns the contract type and market name if found.
+ */
+export function getCometContractLabel(
+  chainId: number,
+  contractAddress: string
+): string | null {
+  const chainMeta = ensureChainMetadata(chainId);
+  if (!chainMeta) return null;
+
+  const addrCS = checksum(contractAddress);
+
+  for (const cometMeta of chainMeta.byComet.values()) {
+    // Check if it's the comet itself
+    if (cometMeta.cometAddress === addrCS) {
+      return `${cometMeta.name} (${cometMeta.symbol})`;
+    }
+    // Check if it's the configurator
+    if (cometMeta.configuratorAddress === addrCS) {
+      return `Configurator for ${cometMeta.name}`;
+    }
+    // Check if it's the base token
+    if (cometMeta.baseTokenAddress === addrCS) {
+      return cometMeta.baseTokenSymbol ?? null;
+    }
+  }
+
+  return null;
+}

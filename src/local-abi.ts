@@ -27,11 +27,13 @@ const CHAIN_DEPLOYMENT_FOLDER: Record<number, string> = {
   130: "unichain",
 };
 
-// Hardcoded mappings for addresses not in roots.json (e.g., CometProxyAdmin)
+// Hardcoded mappings for addresses not in roots.json (e.g., CometProxyAdmin, implementations)
 const HARDCODED_ADDRESSES: Record<number, Record<string, string>> = {
   2020: {
     // Ronin CometProxyAdmin (used for deployAndUpgradeTo)
     "0xfa64A82a3d13D4c05d5133E53b2EbB8A0FA9c3F6": "cometProxyAdmin",
+    // Ronin Configurator implementation (proxy points to this)
+    "0xaE0CCa27C15A534BAE106fC9957338549F82e81d": "configurator",
   },
 };
 
@@ -138,11 +140,31 @@ function loadDeploymentRoots(chainId: number): Map<string, string> {
 /**
  * Get a local ABI for a known Comet contract address.
  * Returns null if the address is not a known contract or ABI is not available.
+ *
+ * @param address The contract address to look up
+ * @param chainId The chain ID
+ * @param proxyAddress Optional: if provided and address is not found, try the proxy address
  */
-export function getLocalAbiFor(address: string, chainId: number): Interface | null {
+export function getLocalAbiFor(
+  address: string,
+  chainId: number,
+  proxyAddress?: string
+): Interface | null {
   const checksumAddr = checksum(address);
   const mapping = loadDeploymentRoots(chainId);
-  const contractType = mapping.get(checksumAddr);
+  let contractType = mapping.get(checksumAddr);
+
+  // If not found and we have a proxy address, try that
+  if (!contractType && proxyAddress) {
+    const proxyCS = checksum(proxyAddress);
+    contractType = mapping.get(proxyCS);
+    if (contractType) {
+      logger.debug(
+        { address: checksumAddr, proxyAddress: proxyCS, chainId, contractType },
+        "Using proxy ABI for implementation address"
+      );
+    }
+  }
 
   if (!contractType) {
     logger.trace({ address: checksumAddr, chainId }, "Address not found in local deployment roots");
