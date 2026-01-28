@@ -133,3 +133,7 @@ pnpm run decode 0x2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c...
 ```
 
 If the calldata cannot be parsed as the Compound `propose` function, the decoder exits with an explanatory error.
+
+## Agentic Review
+
+If you have [Claude Code](https://github.com/anthropics/claude-code) installed, you can run `/review-proposal <proposalId>` to agentically review a proposal. The review will be written to `reviews/proposal-<id>.md`.
