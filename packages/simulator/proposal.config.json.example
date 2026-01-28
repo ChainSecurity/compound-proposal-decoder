@@ -1,0 +1,26 @@
+{
+  "chains":{
+      "mainnet":{
+           "rpcUrl": "https://virtual.mainnet.eu.rpc.tenderly.co/d5bdcfda-c0ac-458b-b551-2ff7d782e7c1",
+           "chainId": "1",
+           "timelockAddress":"0x6d903f6003cca6255D85CcA4D3B5E5146dC33925",
+           "governorAddress": "0x309a862bbC1A00e45506cB8A802D1ff10004c8C0"
+        },
+      "arbitrum":{
+           "rpcUrl": "https://virtual.arbitrum.eu.rpc.tenderly.co/2c79fdf1-c23e-4ea3-89c8-cecf180d2dce",
+           "chainId": "42161",
+           "timelockAddress":"0x3fb4d38ea7ec20d91917c09591490eeda38cf88a",
+           "bridge": "0x4Dbd4fc535Ac27206064B68FfCf827b0A60BAB3f"
+        },
+      "scroll":{
+           "rpcUrl": "https://virtual.scroll-mainnet.eu.rpc.tenderly.co/a0e9241f-2242-410d-a597-b66242ac2a46",
+           "chainId": "534351",
+           "timelockAddress":"0xF6013e80E9e6AC211Cc031ad1CE98B3Aa20b73E4",
+           "bridge": "0x6774Bcbd5ceCeF1336b5300fb5186a12DDD8b367"
+        }
+  },
+  "defaults": {
+    "gas": "0xffffff",
+    "gasPrice": "0x0"
+  }
+}

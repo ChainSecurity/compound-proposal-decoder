@@ -1,19 +1,55 @@
 # Dependencies
-/node_modules
+node_modules
+.pnpm-store
 
 # Build output
-/dist
+dist
+.next
+out
+
+# Turborepo
+.turbo
+
+# TypeScript
+*.tsbuildinfo
 
 # Environment variables
 .env
+.env.local
+.env.*.local
 
-# Caching
+# Config with secrets (use compound-config.json.example as template)
+compound-config.json
 
-.cache
-.pnpm-store
-
-# OS-specific
-.DS_Store
+# Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+
+# Lockfiles (pnpm only)
+package-lock.json
+yarn.lock
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Testing
+coverage
+.nyc_output
+
+# Snapshot storage (shared between CLI and portal)
+.snapshots/
+
+# Misc
+.cache
+
+.claude
