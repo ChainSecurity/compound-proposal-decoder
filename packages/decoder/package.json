@@ -1,0 +1,40 @@
+{
+  "name": "@compound-security/decoder",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": { "import": "./dist/decoder.js", "types": "./dist/decoder.d.ts" }
+  },
+  "scripts": {
+    "decode": "tsx src/main.ts",
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint \"src/**/*.ts\" --fix",
+    "test": "vitest run",
+    "test:e2e": "vitest run test/e2e",
+    "test:watch": "vitest",
+    "generate-fixtures": "tsx scripts/generate-fixtures.ts"
+  },
+  "dependencies": {
+    "axios": "^1.12.2",
+    "boxen": "^7.1.1",
+    "chalk": "^5.6.2",
+    "dotenv": "^17.2.2",
+    "ethers": "^6.15.0",
+    "pino": "^9.11.0",
+    "pino-pretty": "^13.1.1",
+    "string-width": "^8.1.0",
+    "wrap-ansi": "^9.0.2",
+    "yargs": "^18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "@types/yargs": "^17.0.33",
+    "tsup": "^8.0.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}
