@@ -24,6 +24,15 @@ const CHAINLINK_AGGREGATOR_ABI = [
   "function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)",
 ];
 
+const UNDERLYING_PRICE_FEED_ABI = [
+  "function underlyingPriceFeed() view returns (address)",
+  "function priceFeed() view returns (address)",
+];
+
+const API3_DAPI_ABI = [
+  "function dapiName() view returns (bytes32)",
+];
+
 type PriceFeedData = {
   price: string;
   priceNumeric: number;
@@ -212,6 +221,110 @@ async function getPriceFeedDescription(provider: JsonRpcProvider, priceFeedAddre
     }
 }
 
+type UnderlyingPriceFeedInfo = {
+  address: string;
+  type: "API3" | "Chainlink" | "Unknown";
+  name: string;
+};
+
+/**
+ * Resolve the underlying oracle for wrapper price feed contracts.
+ * Many price feeds (like ScalingPriceFeedWithCustomDescription) wrap an underlying oracle.
+ * This function attempts to resolve that underlying oracle and identify its type/name.
+ */
+async function resolveUnderlyingPriceFeed(
+  provider: JsonRpcProvider,
+  priceFeedAddress: string
+): Promise<UnderlyingPriceFeedInfo | null> {
+  if (priceFeedAddress === "0x0000000000000000000000000000000000000000") {
+    return null;
+  }
+
+  try {
+    const underlyingIface = new Interface(UNDERLYING_PRICE_FEED_ABI);
+    let underlyingAddress: string | null = null;
+
+    // Try underlyingPriceFeed() first
+    try {
+      const data = underlyingIface.encodeFunctionData("underlyingPriceFeed");
+      const result = await provider.call({ to: priceFeedAddress, data });
+      const decoded = underlyingIface.decodeFunctionResult("underlyingPriceFeed", result);
+      underlyingAddress = decoded[0] as string;
+    } catch {
+      // Try priceFeed() as fallback
+      try {
+        const data = underlyingIface.encodeFunctionData("priceFeed");
+        const result = await provider.call({ to: priceFeedAddress, data });
+        const decoded = underlyingIface.decodeFunctionResult("priceFeed", result);
+        underlyingAddress = decoded[0] as string;
+      } catch {
+        // No underlying price feed found
+        return null;
+      }
+    }
+
+    if (!underlyingAddress || underlyingAddress === "0x0000000000000000000000000000000000000000") {
+      return null;
+    }
+
+    underlyingAddress = checksum(underlyingAddress);
+
+    // Try to identify the oracle type and get its name
+    // First, try API3 dAPI detection via dapiName()
+    try {
+      const api3Iface = new Interface(API3_DAPI_ABI);
+      const data = api3Iface.encodeFunctionData("dapiName");
+      const result = await provider.call({ to: underlyingAddress, data });
+      const decoded = api3Iface.decodeFunctionResult("dapiName", result);
+      const dapiNameBytes32 = decoded[0] as string;
+
+      // Decode bytes32 to string (remove trailing null bytes)
+      const dapiName = Buffer.from(dapiNameBytes32.slice(2), "hex")
+        .toString("utf8")
+        .replace(/\0+$/, "");
+
+      if (dapiName && dapiName.trim()) {
+        return {
+          address: underlyingAddress,
+          type: "API3",
+          name: dapiName,
+        };
+      }
+    } catch {
+      // Not an API3 dAPI, continue to other detection methods
+    }
+
+    // Try to get description() for Chainlink-style oracles
+    try {
+      const descIface = new Interface(PRICE_FEED_DESCRIPTION_ABI);
+      const data = descIface.encodeFunctionData("description");
+      const result = await provider.call({ to: underlyingAddress, data });
+      const decoded = descIface.decodeFunctionResult("description", result);
+      const description = decoded[0] as string;
+
+      if (description && description.trim()) {
+        return {
+          address: underlyingAddress,
+          type: "Chainlink",
+          name: description,
+        };
+      }
+    } catch {
+      // No description available
+    }
+
+    // Unknown oracle type but we found an underlying address
+    return {
+      address: underlyingAddress,
+      type: "Unknown",
+      name: "Unknown oracle",
+    };
+  } catch (err) {
+    logger.debug({ priceFeedAddress, err }, "Failed to resolve underlying price feed");
+    return null;
+  }
+}
+
 export const cometConfiguratorPriceFeedInsightsHandler: Handler = {
   name: "Configurator price feed insights",
   match: (ctx) => {
@@ -279,6 +392,16 @@ export const cometConfiguratorPriceFeedInsightsHandler: Handler = {
             label: "New Price Feed",
             value: `${newPriceFeed} ("${newDescription}")`,
           });
+
+          // Resolve underlying oracle if this is a wrapper contract
+          const underlying = await resolveUnderlyingPriceFeed(provider, newPriceFeed);
+          if (underlying) {
+            const typeLabel = underlying.type === "API3" ? "API3 dAPI" : underlying.type === "Chainlink" ? "Chainlink" : "Unknown";
+            entries.push({
+              label: "Underlying Oracle",
+              value: `${typeLabel} "${underlying.name}" (${underlying.address})`,
+            });
+          }
 
           // Add current price information for the new price feed
           if (newPriceFeedData) {
@@ -388,6 +511,16 @@ export const cometConfiguratorPriceFeedInsightsHandler: Handler = {
             label: "New Price Feed",
             value: `${newPriceFeed} ("${newDescription}")`,
         });
+
+        // Resolve underlying oracle if this is a wrapper contract
+        const underlying = await resolveUnderlyingPriceFeed(provider, newPriceFeed);
+        if (underlying) {
+          const typeLabel = underlying.type === "API3" ? "API3 dAPI" : underlying.type === "Chainlink" ? "Chainlink" : "Unknown";
+          entries.push({
+            label: "Underlying Oracle",
+            value: `${typeLabel} "${underlying.name}" (${underlying.address})`,
+          });
+        }
 
         // Add current price information for the new price feed
         if (newPriceFeedData) {
