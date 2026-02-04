@@ -33,13 +33,14 @@ function isAddress(value: string): boolean {
 function getExplorerUrl(address: string, chainId: number): string {
   const explorers: Record<number, string> = {
     1: "https://etherscan.io",
-    42161: "https://arbiscan.io",
-    8453: "https://basescan.org",
     10: "https://optimistic.etherscan.io",
     137: "https://polygonscan.com",
-    534352: "https://scrollscan.com",
-    5000: "https://mantlescan.xyz",
     2020: "https://app.roninchain.com",
+    5000: "https://mantlescan.xyz",
+    8453: "https://basescan.org",
+    42161: "https://arbiscan.io",
+    59144: "https://lineascan.build",
+    534352: "https://scrollscan.com",
   };
   const base = explorers[chainId] ?? "https://etherscan.io";
   return `${base}/address/${address}`;
