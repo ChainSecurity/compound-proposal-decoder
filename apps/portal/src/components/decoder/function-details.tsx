@@ -281,8 +281,10 @@ function renderValue(
       : isSourced(etherscanLabel)
         ? etherscanLabel.source
         : undefined;
+    // Use per-address chainId from metadata if available (e.g., bridge target addresses)
+    const addressChainId = meta?.chainId ?? chainId;
     return wrapWithSource(
-      <AddressValue address={unwrappedValue} label={labelValue} labelSource={labelSource} chainId={chainId} />
+      <AddressValue address={unwrappedValue} label={labelValue} labelSource={labelSource} chainId={addressChainId} />
     );
   }
 
@@ -473,8 +475,9 @@ function renderValue(
   if (isAddress(str)) {
     const meta = addressMetadata?.[str];
     const labelValue = meta ? getValue(meta.contractName) : undefined;
+    const addressChainId = meta?.chainId ?? chainId;
     return wrapWithSource(
-      <AddressValue address={str} label={labelValue} chainId={chainId} />
+      <AddressValue address={str} label={labelValue} chainId={addressChainId} />
     );
   }
 
