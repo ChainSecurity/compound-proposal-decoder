@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, ChevronRight, Copy, Check, ExternalLink, AlertTriangle, FileText } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Check, ExternalLink, AlertTriangle, FileText, Circle, CheckCircle2 } from "lucide-react";
 import { FunctionDetails } from "./function-details";
 import { InsightCard } from "./insight-card";
 import { ChainBadge } from "./chain-badge";
@@ -17,6 +17,8 @@ interface ActionCardProps {
   depth?: number;
   id?: string;
   defaultExpanded?: boolean;
+  reviewedIds?: Set<string>;
+  onToggleReviewed?: (id: string) => void;
 }
 
 // Helper to get the value from a potentially sourced value
@@ -158,7 +160,7 @@ function generateMarkdown(node: SerializedCallNode | SourcedSerializedCallNode, 
   return md;
 }
 
-export function ActionCard({ node, index, total, edge, depth = 0, id, defaultExpanded = true }: ActionCardProps) {
+export function ActionCard({ node, index, total, edge, depth = 0, id, defaultExpanded = true, reviewedIds, onToggleReviewed }: ActionCardProps) {
   const [isOpen, setIsOpen] = React.useState(defaultExpanded);
   const [copiedMd, setCopiedMd] = React.useState(false);
 
@@ -167,6 +169,7 @@ export function ActionCard({ node, index, total, edge, depth = 0, id, defaultExp
     setIsOpen(defaultExpanded);
   }, [defaultExpanded]);
 
+  const reviewed = !!(id && reviewedIds?.has(id));
   const hasChildren = node.children && node.children.length > 0;
   const hasNotes = node.notes && node.notes.length > 0;
   const hasInsights = node.insights && node.insights.length > 0;
@@ -205,8 +208,17 @@ export function ActionCard({ node, index, total, edge, depth = 0, id, defaultExp
 
   const isNested = depth > 0;
 
+  const handleToggleReviewed = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (id && onToggleReviewed) onToggleReviewed(id);
+  };
+
   return (
-    <div id={id} data-testid={id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+    <div id={id} data-testid={id} className={`rounded-2xl border overflow-hidden transition-colors ${
+      reviewed
+        ? "bg-emerald-50/30 border-emerald-200"
+        : "bg-white border-slate-200"
+    }`}>
       {/* Header */}
       <div
         className="p-6 cursor-pointer hover:bg-slate-50 transition-colors"
@@ -298,14 +310,29 @@ export function ActionCard({ node, index, total, edge, depth = 0, id, defaultExp
             </div>
           </div>
 
-          {/* Copy as markdown button */}
-          <button
-            onClick={copyAsMarkdown}
-            className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors shrink-0"
-            title="Copy as markdown"
-          >
-            {copiedMd ? <Check className="w-4 h-4 text-emerald-500" /> : <FileText className="w-4 h-4" />}
-          </button>
+          {/* Action buttons */}
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={copyAsMarkdown}
+              className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors"
+              title="Copy as markdown"
+            >
+              {copiedMd ? <Check className="w-4 h-4 text-emerald-500" /> : <FileText className="w-4 h-4" />}
+            </button>
+            {onToggleReviewed && id && (
+              <button
+                onClick={handleToggleReviewed}
+                className={`p-2 rounded-lg transition-colors ${
+                  reviewed
+                    ? "text-emerald-500 hover:bg-emerald-100"
+                    : "text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                }`}
+                title={reviewed ? "Mark as not reviewed" : "Mark as reviewed"}
+              >
+                {reviewed ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -403,6 +430,8 @@ export function ActionCard({ node, index, total, edge, depth = 0, id, defaultExp
                       depth={depth + 1}
                       id={id ? `${id}-${idx}` : undefined}
                       defaultExpanded={defaultExpanded}
+                      reviewedIds={reviewedIds}
+                      onToggleReviewed={onToggleReviewed}
                     />
                   ))}
                 </div>

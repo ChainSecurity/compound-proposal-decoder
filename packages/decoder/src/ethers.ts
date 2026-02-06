@@ -13,11 +13,12 @@ import {
   localAbiSource,
   onChainSource,
   staticMetadataSource,
+  externalApiSource,
 } from "@/types/sources";
 import { JsonRpcProvider, Interface } from "ethers";
 import { logger } from "@/logger";
 import { getLocalAbiFor, getLocalAbiPathFor } from "@/local-abi";
-import { getCometAssetMetadata, getCometContractLabel, fetchCometAssetsOnChain, findCachedAssetSymbol } from "@/lib/comet-metadata";
+import { getCometMetadata, getCometAssetMetadata, getCometContractLabel, fetchCometAssetsOnChain, findCachedAssetSymbol } from "@/lib/comet-metadata";
 import { getRpcUrl, getEtherscanApiKey } from "@/config";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -29,6 +30,7 @@ const CACHE_DIR = join(MONOREPO_ROOT, ".cache");
 const ABI_CACHE_DIR = join(CACHE_DIR, "abi-cache");
 const CONTRACT_NAME_CACHE_DIR = join(CACHE_DIR, "contract-name-cache");
 const ADDRESS_TAG_CACHE_DIR = join(CACHE_DIR, "address-tag-cache");
+const TOKEN_INFO_CACHE_DIR = join(CACHE_DIR, "token-info-cache");
 
 // Etherscan V2 base (unified across chains)
 const ETHERSCAN_V2_BASE = "https://api.etherscan.io/v2/api";
@@ -62,6 +64,12 @@ function nameCachePathFor(address: string, chainId = 1): string {
 
 function addressTagCachePathFor(address: string, chainId = 1): string {
   const cacheDir = join(ADDRESS_TAG_CACHE_DIR, String(chainId));
+  ensureDir(cacheDir);
+  return join(cacheDir, `${checksum(address)}.json`);
+}
+
+function tokenInfoCachePathFor(address: string, chainId = 1): string {
+  const cacheDir = join(TOKEN_INFO_CACHE_DIR, String(chainId));
   ensureDir(cacheDir);
   return join(cacheDir, `${checksum(address)}.json`);
 }
@@ -404,6 +412,144 @@ async function getAddressTagInfo(address: string, chainId?: number): Promise<Add
   return payload;
 }
 
+// =============================================================================
+// Explorer token page scraping (precise tickers like USDC.e)
+// =============================================================================
+
+export type EtherscanTokenInfo = {
+  symbol: string | null;
+  name: string | null;
+  decimals: number | null;
+};
+
+type CachedTokenInfo = EtherscanTokenInfo & { _v?: number };
+const TOKEN_INFO_CACHE_VERSION = 3;
+
+const EXPLORER_BASE_URLS: Record<number, string> = {
+  1: "https://etherscan.io",
+  10: "https://optimistic.etherscan.io",
+  137: "https://polygonscan.com",
+  5000: "https://mantlescan.xyz",
+  8453: "https://basescan.org",
+  42161: "https://arbiscan.io",
+  59144: "https://lineascan.build",
+  534352: "https://scrollscan.com",
+};
+
+/** Pick the longer of two candidate symbols (longer ≈ more informative, e.g. "USDC.e" > "USDC"). */
+export function longestSymbol(a: string | null | undefined, b: string | null | undefined): string | null {
+  if (!a) return b ?? null;
+  if (!b) return a;
+  return b.length > a.length ? b : a;
+}
+
+/**
+ * Parse token name and symbol from the explorer page.
+ * Tries multiple strategies:
+ * 1. <title> tag: "TokenName (SYMBOL) | ERC-20 | Address: 0x... | ChainName"
+ * 2. JSON-LD: {"name": "TokenName (SYMBOL)", ...}
+ * 3. JS variable: var litAssetSymbol = "SYMBOL";
+ */
+function parseTokenPage(html: string): EtherscanTokenInfo {
+  // Strategy 1: <title> tag
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (titleMatch) {
+    const title = titleMatch[1].trim();
+    const tokenMatch = title.match(/^(.+?)\s*\(([^)]+)\)\s*\|/);
+    if (tokenMatch) {
+      const name = tokenMatch[1].trim() || null;
+      const symbol = tokenMatch[2].trim() || null;
+      if (symbol) return { symbol, name, decimals: null };
+    }
+  }
+
+  // Strategy 2: JSON-LD schema {"name": "TokenName (SYMBOL)"}
+  const jsonLdMatch = html.match(/<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i);
+  if (jsonLdMatch) {
+    try {
+      const ld = JSON.parse(jsonLdMatch[1]);
+      if (typeof ld.name === "string") {
+        const ldTokenMatch = ld.name.match(/^(.+?)\s*\(([^)]+)\)$/);
+        if (ldTokenMatch) {
+          const name = ldTokenMatch[1].trim() || null;
+          const symbol = ldTokenMatch[2].trim() || null;
+          if (symbol) return { symbol, name, decimals: null };
+        }
+      }
+    } catch { /* malformed JSON-LD */ }
+  }
+
+  // Strategy 3: JS variable litAssetSymbol
+  const litMatch = html.match(/var\s+litAssetSymbol\s*=\s*"([^"]+)"/);
+  if (litMatch) {
+    return { symbol: litMatch[1].trim(), name: null, decimals: null };
+  }
+
+  return { symbol: null, name: null, decimals: null };
+}
+
+/**
+ * Fetch token info by scraping the explorer's /token/ page title.
+ * Returns the precise token ticker as listed on the explorer (e.g., "USDC.e" not "USDC").
+ */
+export async function getEtherscanTokenInfo(address: string, chainId?: number): Promise<EtherscanTokenInfo> {
+  const cid = chainId ?? 1;
+  const checksumAddr = checksum(address);
+  const path = tokenInfoCachePathFor(address, cid);
+
+  if (existsSync(path)) {
+    try {
+      const raw = readFileSync(path, "utf8");
+      const cached = JSON.parse(raw) as CachedTokenInfo;
+      if (cached._v === TOKEN_INFO_CACHE_VERSION) {
+        return { symbol: cached.symbol, name: cached.name, decimals: cached.decimals };
+      }
+    } catch {
+      // corrupted cache
+    }
+  }
+
+  const explorerBase = EXPLORER_BASE_URLS[cid];
+  if (!explorerBase) {
+    const empty: CachedTokenInfo = { symbol: null, name: null, decimals: null, _v: TOKEN_INFO_CACHE_VERSION };
+    writeFileSync(path, JSON.stringify(empty, null, 2));
+    return { symbol: null, name: null, decimals: null };
+  }
+
+  const url = `${explorerBase}/token/${checksumAddr}`;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      logger.trace({ address: checksumAddr, chainId: cid, attempt }, "Fetching token page from explorer");
+      const resp = await axios.get(url, {
+        timeout: 10000,
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; proposal-decoder/1.0)" },
+        maxContentLength: 500_000,
+        responseType: "text",
+      });
+
+      if (typeof resp.data === "string") {
+        const info = parseTokenPage(resp.data);
+        if (info.symbol) {
+          const cached: CachedTokenInfo = { ...info, _v: TOKEN_INFO_CACHE_VERSION };
+          writeFileSync(path, JSON.stringify(cached, null, 2));
+          return info;
+        }
+      }
+      break;
+    } catch {
+      if (attempt < 1) {
+        await sleep(1000);
+        continue;
+      }
+    }
+  }
+
+  const empty: CachedTokenInfo = { symbol: null, name: null, decimals: null, _v: TOKEN_INFO_CACHE_VERSION };
+  writeFileSync(path, JSON.stringify(empty, null, 2));
+  return { symbol: null, name: null, decimals: null };
+}
+
 /** Main entry */
 
 import detectProxy from "./lib/evm-proxy-detection/index";
@@ -434,6 +580,10 @@ export type SourcedAddressMetadata = {
   contractName?: Sourced<string | null>;
   etherscanLabel?: Sourced<string | null>;
   tokenSymbol?: Sourced<string | null>;
+  tokenName?: Sourced<string | null>;
+  tokenDecimals?: Sourced<number | null>;
+  baseTokenSymbol?: Sourced<string | null>;
+  baseTokenDecimals?: Sourced<number | null>;
   labels?: Sourced<string[]>;
   ensName?: Sourced<string | null>;
   url?: Sourced<string | null>;
@@ -444,6 +594,8 @@ export type SourcedAddressMetadata = {
     contractName?: string | null;
     etherscanLabel?: string | null;
     tokenSymbol?: string | null;
+    tokenName?: string | null;
+    tokenDecimals?: number | null;
     labels?: string[];
     ensName?: string | null;
   }>;
@@ -776,7 +928,6 @@ export async function getAddressMetadata(
     // Try to find as a token/asset from static metadata
     const assetMeta = getCometAssetMetadata(chainId, address);
     if (assetMeta) {
-      // Always prefer Comet asset symbol over generic labels
       if (!metadata.tokenSymbol || isGenericLabel(metadata.contractName)) {
         metadata.tokenSymbol = assetMeta.symbol;
       }
@@ -791,7 +942,7 @@ export async function getAddressMetadata(
       metadata.contractName = cometLabel;
     }
 
-    // Check on-chain asset cache (populated by decoder when processing Comet calls)
+    // Check on-chain asset cache
     if (!metadata.tokenSymbol && isGenericLabel(metadata.contractName)) {
       const cachedSymbol = findCachedAssetSymbol(chainId, address);
       if (cachedSymbol) {
@@ -799,19 +950,116 @@ export async function getAddressMetadata(
       }
     }
 
-    // Final fallback: try to fetch token symbol directly on-chain
-    if (!metadata.tokenSymbol && isGenericLabel(metadata.contractName)) {
+    // Resolve token symbol from explorer + on-chain, keep the longest
+    if (metadata.tokenSymbol || isGenericLabel(metadata.contractName)) {
+      const explorerToken = await getEtherscanTokenInfo(address, chainId);
+      if (explorerToken.symbol) {
+        metadata.tokenSymbol = longestSymbol(metadata.tokenSymbol, explorerToken.symbol);
+      }
+      if (explorerToken.name) {
+        metadata.tokenName = explorerToken.name;
+      }
+
+      // Always try on-chain for symbol comparison + missing decimals
       try {
         const provider = getProviderFor(chainId);
-        const iface = new Interface(["function symbol() view returns (string)"]);
-        const data = iface.encodeFunctionData("symbol");
-        const result = await provider.call({ to: address, data });
-        const [symbol] = iface.decodeFunctionResult("symbol", result);
-        if (symbol && typeof symbol === "string") {
-          metadata.tokenSymbol = symbol;
+        const erc20Iface = new Interface([
+          "function symbol() view returns (string)",
+          "function name() view returns (string)",
+          "function decimals() view returns (uint8)",
+        ]);
+
+        const calls = await Promise.allSettled([
+          provider.call({ to: address, data: erc20Iface.encodeFunctionData("symbol") }),
+          !metadata.tokenName
+            ? provider.call({ to: address, data: erc20Iface.encodeFunctionData("name") })
+            : Promise.reject("skip"),
+          metadata.tokenDecimals == null
+            ? provider.call({ to: address, data: erc20Iface.encodeFunctionData("decimals") })
+            : Promise.reject("skip"),
+        ]);
+
+        if (calls[0].status === "fulfilled") {
+          const [symbol] = erc20Iface.decodeFunctionResult("symbol", calls[0].value);
+          if (symbol && typeof symbol === "string") {
+            metadata.tokenSymbol = longestSymbol(metadata.tokenSymbol, symbol);
+          }
+        }
+        if (!metadata.tokenName && calls[1].status === "fulfilled") {
+          const [name] = erc20Iface.decodeFunctionResult("name", calls[1].value);
+          if (name && typeof name === "string") metadata.tokenName = name;
+        }
+        if (metadata.tokenDecimals == null && calls[2].status === "fulfilled") {
+          const [decimals] = erc20Iface.decodeFunctionResult("decimals", calls[2].value);
+          if (decimals != null) metadata.tokenDecimals = Number(decimals);
         }
       } catch {
         // Not an ERC20 token or RPC error, ignore
+      }
+    }
+
+    // Always detect base token for Comet proxies (known from metadata or on-chain)
+    const cometMeta = getCometMetadata(chainId, address);
+    if (cometMeta?.baseTokenAddress) {
+      // Known Comet proxy: get symbol from explorer, static config AND on-chain, keep longest
+      const baseExplorer = await getEtherscanTokenInfo(cometMeta.baseTokenAddress, chainId);
+      const bestStatic = baseExplorer.symbol ?? cometMeta.baseTokenSymbol ?? null;
+      try {
+        const provider = getProviderFor(chainId);
+        const erc20Iface = new Interface([
+          "function symbol() view returns (string)",
+          "function decimals() view returns (uint8)",
+        ]);
+        const [symRes, decRes] = await Promise.allSettled([
+          provider.call({ to: cometMeta.baseTokenAddress, data: erc20Iface.encodeFunctionData("symbol") }),
+          metadata.baseTokenDecimals == null
+            ? provider.call({ to: cometMeta.baseTokenAddress, data: erc20Iface.encodeFunctionData("decimals") })
+            : Promise.reject("skip"),
+        ]);
+        const onChainSymbol = symRes.status === "fulfilled"
+          ? (erc20Iface.decodeFunctionResult("symbol", symRes.value)[0] as string)
+          : null;
+        metadata.baseTokenSymbol = longestSymbol(bestStatic, onChainSymbol);
+        if (metadata.baseTokenDecimals == null && decRes.status === "fulfilled") {
+          const [dec] = erc20Iface.decodeFunctionResult("decimals", decRes.value);
+          if (dec != null) metadata.baseTokenDecimals = Number(dec);
+        }
+      } catch {
+        metadata.baseTokenSymbol = bestStatic;
+      }
+    } else if (!metadata.baseTokenSymbol) {
+      // Unknown address: try on-chain baseToken() detection
+      try {
+        const provider = getProviderFor(chainId);
+        const baseTokenIface = new Interface(["function baseToken() view returns (address)"]);
+        const baseTokenResult = await provider.call({
+          to: address,
+          data: baseTokenIface.encodeFunctionData("baseToken"),
+        });
+        const [baseTokenAddr] = baseTokenIface.decodeFunctionResult("baseToken", baseTokenResult);
+        if (baseTokenAddr && typeof baseTokenAddr === "string") {
+          const baseExplorer = await getEtherscanTokenInfo(baseTokenAddr, chainId);
+          const erc20Iface = new Interface([
+            "function symbol() view returns (string)",
+            "function decimals() view returns (uint8)",
+          ]);
+          const [symRes, decRes] = await Promise.allSettled([
+            provider.call({ to: baseTokenAddr, data: erc20Iface.encodeFunctionData("symbol") }),
+            metadata.baseTokenDecimals == null
+              ? provider.call({ to: baseTokenAddr, data: erc20Iface.encodeFunctionData("decimals") })
+              : Promise.reject("skip"),
+          ]);
+          const onChainSymbol = symRes.status === "fulfilled"
+            ? (erc20Iface.decodeFunctionResult("symbol", symRes.value)[0] as string)
+            : null;
+          metadata.baseTokenSymbol = longestSymbol(baseExplorer.symbol, onChainSymbol);
+          if (metadata.baseTokenDecimals == null && decRes.status === "fulfilled") {
+            const [dec] = erc20Iface.decodeFunctionResult("decimals", decRes.value);
+            if (dec != null) metadata.baseTokenDecimals = Number(dec);
+          }
+        }
+      } catch {
+        // Not a Comet proxy, ignore
       }
     }
   }
@@ -957,22 +1205,197 @@ async function getAddressMetadataWithSources(
     }
   }
 
-  // Final fallback: on-chain symbol fetch
-  if (!metadata.tokenSymbol && isGenericLabel(metadata.contractName?.value)) {
+  // Resolve token symbol from explorer + on-chain, keep the longest
+  if (metadata.tokenSymbol || isGenericLabel(metadata.contractName?.value)) {
+    const explorerToken = await getEtherscanTokenInfo(checksumAddr, chainId);
+    const explorerSource = externalApiSource(
+      "etherscan-explorer",
+      `${EXPLORER_BASE_URLS[chainId] ?? "https://etherscan.io"}/token/${checksumAddr}`
+    );
+    // Extract current raw symbol value
+    const currentRaw = metadata.tokenSymbol
+      ? (typeof metadata.tokenSymbol === "object" && "value" in metadata.tokenSymbol
+          ? (metadata.tokenSymbol as Sourced<string>).value
+          : metadata.tokenSymbol as unknown as string)
+      : null;
+
+    // Collect all candidates: current, explorer, on-chain
+    let bestSymbol = currentRaw;
+    let bestSource: DataSource | undefined;
+
+    if (explorerToken.symbol) {
+      bestSymbol = longestSymbol(bestSymbol, explorerToken.symbol);
+      if (bestSymbol === explorerToken.symbol) bestSource = explorerSource;
+    }
+    if (explorerToken.name) {
+      metadata.tokenName = sourced(explorerToken.name, explorerSource);
+    }
+
+    // Always try on-chain for symbol comparison + missing decimals
     try {
       const provider = getProviderFor(chainId);
-      const iface = new Interface(["function symbol() view returns (string)"]);
-      const data = iface.encodeFunctionData("symbol");
-      const result = await provider.call({ to: checksumAddr, data });
-      const [symbol] = iface.decodeFunctionResult("symbol", result);
-      if (symbol && typeof symbol === "string") {
-        metadata.tokenSymbol = sourced(
-          symbol,
-          onChainSource(chainId, checksumAddr, "symbol()", [])
-        );
+      const erc20Iface = new Interface([
+        "function symbol() view returns (string)",
+        "function name() view returns (string)",
+        "function decimals() view returns (uint8)",
+      ]);
+
+      const calls = await Promise.allSettled([
+        provider.call({ to: checksumAddr, data: erc20Iface.encodeFunctionData("symbol") }),
+        !metadata.tokenName
+          ? provider.call({ to: checksumAddr, data: erc20Iface.encodeFunctionData("name") })
+          : Promise.reject("skip"),
+        metadata.tokenDecimals == null
+          ? provider.call({ to: checksumAddr, data: erc20Iface.encodeFunctionData("decimals") })
+          : Promise.reject("skip"),
+      ]);
+
+      if (calls[0].status === "fulfilled") {
+        const [symbol] = erc20Iface.decodeFunctionResult("symbol", calls[0].value);
+        if (symbol && typeof symbol === "string") {
+          const prev = bestSymbol;
+          bestSymbol = longestSymbol(bestSymbol, symbol);
+          if (bestSymbol === symbol && bestSymbol !== prev) {
+            bestSource = onChainSource(chainId, checksumAddr, "symbol()", []);
+          }
+        }
+      }
+      if (!metadata.tokenName && calls[1].status === "fulfilled") {
+        const [name] = erc20Iface.decodeFunctionResult("name", calls[1].value);
+        if (name && typeof name === "string") {
+          metadata.tokenName = sourced(name, onChainSource(chainId, checksumAddr, "name()", []));
+        }
+      }
+      if (metadata.tokenDecimals == null && calls[2].status === "fulfilled") {
+        const [decimals] = erc20Iface.decodeFunctionResult("decimals", calls[2].value);
+        if (decimals !== undefined && decimals !== null) {
+          metadata.tokenDecimals = sourced(Number(decimals), onChainSource(chainId, checksumAddr, "decimals()", []));
+        }
       }
     } catch {
       // Not an ERC20 token or RPC error, ignore
+    }
+
+    // Apply the longest symbol
+    if (bestSymbol && bestSymbol !== currentRaw) {
+      metadata.tokenSymbol = sourced(bestSymbol, bestSource ?? explorerSource);
+    } else if (bestSymbol && !metadata.tokenSymbol) {
+      metadata.tokenSymbol = sourced(bestSymbol, bestSource ?? explorerSource);
+    }
+  }
+
+  // Always detect base token for Comet proxies (known from metadata or on-chain)
+  const cometMeta = getCometMetadata(chainId, checksumAddr);
+  if (cometMeta?.baseTokenAddress) {
+    // Known Comet proxy: get symbol from explorer, static config AND on-chain, keep longest
+    const baseExplorer = await getEtherscanTokenInfo(cometMeta.baseTokenAddress, chainId);
+    const bestStatic = baseExplorer.symbol ?? cometMeta.baseTokenSymbol ?? null;
+    try {
+      const provider = getProviderFor(chainId);
+      const erc20Iface = new Interface([
+        "function symbol() view returns (string)",
+        "function decimals() view returns (uint8)",
+      ]);
+      const [symRes, decRes] = await Promise.allSettled([
+        provider.call({ to: cometMeta.baseTokenAddress, data: erc20Iface.encodeFunctionData("symbol") }),
+        metadata.baseTokenDecimals == null
+          ? provider.call({ to: cometMeta.baseTokenAddress, data: erc20Iface.encodeFunctionData("decimals") })
+          : Promise.reject("skip"),
+      ]);
+      const onChainSymbol = symRes.status === "fulfilled"
+        ? (erc20Iface.decodeFunctionResult("symbol", symRes.value)[0] as string)
+        : null;
+      const finalSymbol = longestSymbol(bestStatic, onChainSymbol);
+      if (finalSymbol) {
+        const useOnChain = finalSymbol === onChainSymbol && finalSymbol !== bestStatic;
+        const baseSource = useOnChain
+          ? onChainSource(chainId, cometMeta.baseTokenAddress, "symbol()", [])
+          : baseExplorer.symbol
+            ? externalApiSource(
+                "etherscan-explorer",
+                `${EXPLORER_BASE_URLS[chainId] ?? "https://etherscan.io"}/token/${cometMeta.baseTokenAddress}`
+              )
+            : staticMetadataSource(
+                `vendor/comet/deployments/*/configuration.json`,
+                `baseTokenSymbol`,
+                undefined
+              );
+        metadata.baseTokenSymbol = sourced(finalSymbol, baseSource);
+      }
+      if (metadata.baseTokenDecimals == null && decRes.status === "fulfilled") {
+        const [dec] = erc20Iface.decodeFunctionResult("decimals", decRes.value);
+        if (dec != null) {
+          metadata.baseTokenDecimals = sourced(
+            Number(dec),
+            onChainSource(chainId, cometMeta.baseTokenAddress, "decimals()", [])
+          );
+        }
+      }
+    } catch {
+      if (bestStatic) {
+        const baseSource = baseExplorer.symbol
+          ? externalApiSource(
+              "etherscan-explorer",
+              `${EXPLORER_BASE_URLS[chainId] ?? "https://etherscan.io"}/token/${cometMeta.baseTokenAddress}`
+            )
+          : staticMetadataSource(
+              `vendor/comet/deployments/*/configuration.json`,
+              `baseTokenSymbol`,
+              undefined
+            );
+        metadata.baseTokenSymbol = sourced(bestStatic, baseSource);
+      }
+    }
+  } else if (!metadata.baseTokenSymbol) {
+    // Unknown address: try on-chain baseToken() detection
+    try {
+      const provider = getProviderFor(chainId);
+      const baseTokenIface = new Interface(["function baseToken() view returns (address)"]);
+      const baseTokenResult = await provider.call({
+        to: checksumAddr,
+        data: baseTokenIface.encodeFunctionData("baseToken"),
+      });
+      const [baseTokenAddr] = baseTokenIface.decodeFunctionResult("baseToken", baseTokenResult);
+      if (baseTokenAddr && typeof baseTokenAddr === "string") {
+        const baseExplorer = await getEtherscanTokenInfo(baseTokenAddr, chainId);
+        const erc20Iface = new Interface([
+          "function symbol() view returns (string)",
+          "function decimals() view returns (uint8)",
+        ]);
+        const [symRes, decRes] = await Promise.allSettled([
+          provider.call({ to: baseTokenAddr, data: erc20Iface.encodeFunctionData("symbol") }),
+          metadata.baseTokenDecimals == null
+            ? provider.call({ to: baseTokenAddr, data: erc20Iface.encodeFunctionData("decimals") })
+            : Promise.reject("skip"),
+        ]);
+        const onChainSymbol = symRes.status === "fulfilled"
+          ? (erc20Iface.decodeFunctionResult("symbol", symRes.value)[0] as string)
+          : null;
+        const finalSymbol = longestSymbol(baseExplorer.symbol, onChainSymbol);
+        if (finalSymbol) {
+          const useOnChain = finalSymbol === onChainSymbol && finalSymbol !== baseExplorer.symbol;
+          metadata.baseTokenSymbol = sourced(
+            finalSymbol,
+            useOnChain
+              ? onChainSource(chainId, baseTokenAddr, "symbol()", [])
+              : externalApiSource(
+                  "etherscan-explorer",
+                  `${EXPLORER_BASE_URLS[chainId] ?? "https://etherscan.io"}/token/${baseTokenAddr}`
+                )
+          );
+        }
+        if (metadata.baseTokenDecimals == null && decRes.status === "fulfilled") {
+          const [dec] = erc20Iface.decodeFunctionResult("decimals", decRes.value);
+          if (dec != null) {
+            metadata.baseTokenDecimals = sourced(
+              Number(dec),
+              onChainSource(chainId, baseTokenAddr, "decimals()", [])
+            );
+          }
+        }
+      }
+    } catch {
+      // Not a Comet proxy, ignore
     }
   }
 

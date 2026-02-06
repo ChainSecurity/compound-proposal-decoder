@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { FileText, Layers, Wallet, Copy, Check, ExternalLink } from "lucide-react";
+import { FileText, Layers, Wallet, Copy, Check, ExternalLink, CheckCircle2 } from "lucide-react";
 import type { SerializedDecodedProposal, Sourced } from "@/types/decoder";
 import { isSourced } from "@/types/decoder";
 
@@ -12,6 +12,8 @@ function getValue<T>(val: T | Sourced<T>): T {
 
 interface ProposalOverviewProps {
   proposal: SerializedDecodedProposal;
+  reviewedCount?: number;
+  totalCount?: number;
 }
 
 function truncateAddress(address: string): string {
@@ -32,7 +34,7 @@ function countChains(proposal: SerializedDecodedProposal): number {
   return chains.size;
 }
 
-export function ProposalOverview({ proposal }: ProposalOverviewProps) {
+export function ProposalOverview({ proposal, reviewedCount = 0, totalCount = 0 }: ProposalOverviewProps) {
   const [copied, setCopied] = React.useState(false);
   const proposalId = getValue(proposal.proposalId);
   const governor = getValue(proposal.governor);
@@ -117,6 +119,37 @@ export function ProposalOverview({ proposal }: ProposalOverviewProps) {
           </a>
         </div>
       </div>
+
+      {/* Review Progress */}
+      {totalCount > 0 && (
+        <div className={`rounded-2xl border p-6 transition-colors ${
+          reviewedCount === totalCount
+            ? "bg-emerald-50 border-emerald-200"
+            : "bg-white border-slate-200"
+        }`}>
+          <div className="flex items-center gap-3 mb-4">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+              reviewedCount === totalCount ? "bg-emerald-100" : "bg-slate-100"
+            }`}>
+              <CheckCircle2 className={`w-5 h-5 ${
+                reviewedCount === totalCount ? "text-emerald-600" : "text-slate-600"
+              }`} />
+            </div>
+            <span className="text-sm font-medium text-slate-500">Reviewed</span>
+          </div>
+          <div className="text-2xl font-bold text-slate-900 mb-2">
+            {reviewedCount} / {totalCount}
+          </div>
+          <div className="w-full bg-slate-200 rounded-full h-1.5">
+            <div
+              className={`h-1.5 rounded-full transition-all ${
+                reviewedCount === totalCount ? "bg-emerald-500" : "bg-slate-400"
+              }`}
+              style={{ width: `${(reviewedCount / totalCount) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

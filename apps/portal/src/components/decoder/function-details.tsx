@@ -6,7 +6,9 @@ import type {
   SerializedDecodedFunction,
   SourcedSerializedDecodedFunction,
   SerializableParamInfo,
+  AddressMetadata,
   AddressMetadataMap,
+  SourcedAddressMetadata,
   SourcedAddressMetadataMap,
   DataSource,
   Sourced,
@@ -63,6 +65,41 @@ function MaybeSourced({
 // Get the underlying value from a potentially sourced value
 function getValue<T>(val: T | Sourced<T>): T {
   return isSourced(val) ? val.value : val;
+}
+
+// Generic proxy contract names that should be replaced with token info when available
+const GENERIC_PROXY_NAMES = [
+  "TransparentUpgradeableProxy",
+  "ERC1967Proxy",
+  "UUPSProxy",
+  "Proxy",
+  "ERC20",
+  "Token",
+];
+
+// Build a human-readable token label from address metadata (ticker + decimals + base token)
+function buildTokenLabel(
+  meta: AddressMetadata | SourcedAddressMetadata
+): { label: string | null; source?: DataSource } {
+  const symbol = getValue(meta.tokenSymbol);
+  const decimals = getValue(meta.tokenDecimals);
+  const baseSymbol = getValue(meta.baseTokenSymbol);
+
+  if (!symbol) return { label: null };
+
+  const dec = decimals !== null && decimals !== undefined ? ` (${decimals} dec.)` : "";
+  let label = `${symbol}${dec}`;
+
+  // Append base token for Comet proxies
+  if (baseSymbol) {
+    label += ` • base: ${baseSymbol}`;
+  }
+
+  const source = isSourced(meta.tokenSymbol)
+    ? meta.tokenSymbol.source
+    : undefined;
+
+  return { label, source };
 }
 
 // Copyable wrapper component
@@ -274,13 +311,33 @@ function renderValue(
     // Get label, handling both sourced and non-sourced metadata
     const contractName = meta?.contractName;
     const etherscanLabel = meta?.etherscanLabel;
-    const labelValue = getValue(contractName) || getValue(etherscanLabel);
-    // Get label source - prefer contractName source, then etherscanLabel source
-    const labelSource = isSourced(contractName)
+    const rawContractName = getValue(contractName) || getValue(etherscanLabel);
+
+    // If the contract name is a generic proxy label, prefer token metadata
+    const isGeneric = !rawContractName || GENERIC_PROXY_NAMES.some((g) => rawContractName?.includes(g));
+    let labelValue: string | null | undefined = rawContractName;
+    let labelSource = isSourced(contractName)
       ? contractName.source
       : isSourced(etherscanLabel)
         ? etherscanLabel.source
         : undefined;
+
+    if (isGeneric && meta) {
+      const tokenLabel = buildTokenLabel(meta);
+      if (tokenLabel.label) {
+        labelValue = tokenLabel.label;
+        labelSource = tokenLabel.source;
+      }
+    }
+
+    // For non-generic contract names, still append base token info if available
+    if (!isGeneric && meta) {
+      const baseSymbol = getValue(meta.baseTokenSymbol);
+      if (baseSymbol) {
+        labelValue = `${labelValue} • base: ${baseSymbol}`;
+      }
+    }
+
     // Use per-address chainId from metadata if available (e.g., bridge target addresses)
     const addressChainId = meta?.chainId ?? chainId;
     return wrapWithSource(

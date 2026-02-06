@@ -47,6 +47,14 @@ export type AddressMetadata = {
   etherscanLabel?: string | null;
   /** Optional token symbol if the address tracks an ERC token */
   tokenSymbol?: string | null;
+  /** Optional token name (e.g. "USD Coin") */
+  tokenName?: string | null;
+  /** Optional token decimals (e.g. 6 for USDC, 18 for WETH) */
+  tokenDecimals?: number | null;
+  /** If address is a Comet proxy, the base token symbol */
+  baseTokenSymbol?: string | null;
+  /** If address is a Comet proxy, the base token decimals */
+  baseTokenDecimals?: number | null;
   /** Additional label categories returned by the metadata API */
   labels?: string[];
   /** ENS name if provided via metadata */
@@ -65,6 +73,8 @@ export type AddressMetadata = {
     contractName?: string | null;
     etherscanLabel?: string | null;
     tokenSymbol?: string | null;
+    tokenName?: string | null;
+    tokenDecimals?: number | null;
     labels?: string[];
     ensName?: string | null;
   };
@@ -75,6 +85,10 @@ export type SourcedAddressMetadata = {
   contractName?: Sourced<string | null>;
   etherscanLabel?: Sourced<string | null>;
   tokenSymbol?: Sourced<string | null>;
+  tokenName?: Sourced<string | null>;
+  tokenDecimals?: Sourced<number | null>;
+  baseTokenSymbol?: Sourced<string | null>;
+  baseTokenDecimals?: Sourced<number | null>;
   labels?: string[];
   ensName?: string | null;
   url?: string | null;
@@ -87,6 +101,8 @@ export type SourcedAddressMetadata = {
     contractName?: Sourced<string | null>;
     etherscanLabel?: Sourced<string | null>;
     tokenSymbol?: Sourced<string | null>;
+    tokenName?: Sourced<string | null>;
+    tokenDecimals?: Sourced<number | null>;
     labels?: string[];
     ensName?: string | null;
   };

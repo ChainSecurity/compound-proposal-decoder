@@ -13,6 +13,7 @@ interface ActionMinimapProps {
   calls: SerializedCallNode[];
   activeId: string | null;
   onSelect: (id: string) => void;
+  reviewedIds?: Set<string>;
 }
 
 interface MinimapItem {
@@ -66,7 +67,7 @@ function truncateName(name: string, maxLength: number = 20): string {
   return name.slice(0, maxLength - 1) + "…";
 }
 
-export function ActionMinimap({ calls, activeId, onSelect }: ActionMinimapProps) {
+export function ActionMinimap({ calls, activeId, onSelect, reviewedIds }: ActionMinimapProps) {
   const items = React.useMemo(() => buildMinimapItems(calls), [calls]);
 
   return (
@@ -87,6 +88,7 @@ export function ActionMinimap({ calls, activeId, onSelect }: ActionMinimapProps)
               : "Unknown";
           const isActive = item.id === activeId;
           const isTopLevel = item.depth === 0;
+          const isReviewed = reviewedIds?.has(item.id) ?? false;
 
           return (
             <button
@@ -99,9 +101,11 @@ export function ActionMinimap({ calls, activeId, onSelect }: ActionMinimapProps)
                 {/* Dot indicator */}
                 <div
                   className={`relative z-10 w-[7px] h-[7px] rounded-full border-2 transition-colors ${
-                    isActive
-                      ? "bg-slate-900 border-slate-900"
-                      : "bg-white border-slate-300 group-hover:border-slate-400"
+                    isReviewed
+                      ? "bg-emerald-500 border-emerald-500"
+                      : isActive
+                        ? "bg-slate-900 border-slate-900"
+                        : "bg-white border-slate-300 group-hover:border-slate-400"
                   }`}
                 />
 

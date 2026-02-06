@@ -1,6 +1,6 @@
 import { Interface, JsonRpcProvider } from "ethers";
 import { checksum } from "@/utils";
-import { getAbiFor, getImplementationAddress, getProviderFor } from "@/ethers";
+import { getAbiFor, getImplementationAddress, getProviderFor, getEtherscanTokenInfo, longestSymbol } from "@/ethers";
 import { insight, selectorOfSig, type Handler, type InsightRequest } from "@/registry";
 import { logger } from "@/logger";
 import { getCometMetadata } from "@/lib/comet-metadata";
@@ -349,11 +349,11 @@ export const cometConfiguratorPriceFeedInsightsHandler: Handler = {
       const entries: { label: string; value: string }[] = [
         {
           label: "Comet",
-          value: formatCometLabel(ctx.chainId, cometProxy),
+          value: await formatCometLabel(ctx.chainId, cometProxy),
         },
         {
           label: "Base Token",
-          value: formatBaseTokenLabel(ctx.chainId, cometProxy),
+          value: await formatBaseTokenLabel(ctx.chainId, cometProxy),
         },
       ];
 
@@ -474,11 +474,11 @@ export const cometConfiguratorPriceFeedInsightsHandler: Handler = {
     const entries: { label: string; value: string }[] = [
       {
         label: "Comet",
-        value: formatCometLabel(ctx.chainId, cometProxy),
+        value: await formatCometLabel(ctx.chainId, cometProxy),
       },
       {
         label: "Asset",
-        value: formatAssetLabel(ctx.chainId, cometProxy, asset),
+        value: await formatAssetLabel(ctx.chainId, cometProxy, asset),
       },
     ];
 
@@ -711,30 +711,116 @@ async function getOnchainRatio(provider: JsonRpcProvider, ratioProvider: string,
 }
 
 
-function formatCometLabel(chainId: number, comet: string): string {
-  const metadata = getCometMetadata(chainId, comet);
-  if (!metadata) return comet;
-  const label = metadata.name ? `${metadata.name} (${metadata.symbol})` : metadata.symbol;
-  return `${label} • ${comet}`;
+const ERC20_INFO_ABI = [
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+];
+
+const COMET_BASE_TOKEN_ABI = ["function baseToken() view returns (address)"];
+
+function shortAddr(address: string): string {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
-function formatAssetLabel(chainId: number, comet: string, asset: string): string {
-  const metadata = getCometMetadata(chainId, comet);
-  if (!metadata) return asset;
-  const assetMeta = metadata.assetsByAddress[checksum(asset)];
-  if (!assetMeta) return asset;
-  return `${assetMeta.symbol}${assetMeta.name ? ` (${assetMeta.name})` : ""} • ${assetMeta.address}`;
+function formatTokenTag(symbol: string | null, decimals: number | null): string | null {
+  if (!symbol) return null;
+  const dec = decimals !== null ? ` (${decimals} dec.)` : "";
+  return `${symbol}${dec}`;
 }
 
-function formatBaseTokenLabel(chainId: number, comet: string): string {
-  const metadata = getCometMetadata(chainId, comet);
-  if (!metadata) return "Unknown";
-  if (metadata.baseTokenSymbol) {
-    return metadata.baseTokenAddress
-      ? `${metadata.baseTokenSymbol} • ${metadata.baseTokenAddress}`
-      : metadata.baseTokenSymbol;
+async function fetchTokenInfo(chainId: number, address: string, staticSymbol?: string | null): Promise<{ symbol: string | null; decimals: number | null }> {
+  // Try explorer page for precise ticker (e.g. "USDC.e" not "USDC")
+  const explorerToken = await getEtherscanTokenInfo(address, chainId);
+  const bestStatic = explorerToken.symbol ?? staticSymbol ?? null;
+
+  try {
+    const provider = getProviderFor(chainId);
+    const iface = new Interface(ERC20_INFO_ABI);
+    const [symRes, decRes] = await Promise.allSettled([
+      provider.call({ to: address, data: iface.encodeFunctionData("symbol") }),
+      provider.call({ to: address, data: iface.encodeFunctionData("decimals") }),
+    ]);
+    const onChainSymbol = symRes.status === "fulfilled"
+      ? (iface.decodeFunctionResult("symbol", symRes.value)[0] as string)
+      : null;
+    const decimals = decRes.status === "fulfilled"
+      ? Number(iface.decodeFunctionResult("decimals", decRes.value)[0])
+      : null;
+    // Pick the longest symbol (longer ≈ more informative, e.g. "USDC.e" > "USDC")
+    const symbol = longestSymbol(bestStatic, onChainSymbol);
+    return { symbol, decimals };
+  } catch {
+    return { symbol: bestStatic, decimals: null };
   }
-  return metadata.baseTokenAddress ?? "Unknown";
+}
+
+async function fetchBaseTokenTag(chainId: number, cometProxy: string): Promise<string | null> {
+  try {
+    const provider = getProviderFor(chainId);
+    const iface = new Interface(COMET_BASE_TOKEN_ABI);
+    const result = await provider.call({ to: cometProxy, data: iface.encodeFunctionData("baseToken") });
+    const [baseTokenAddr] = iface.decodeFunctionResult("baseToken", result);
+    if (!baseTokenAddr || typeof baseTokenAddr !== "string") return null;
+    const { symbol, decimals } = await fetchTokenInfo(chainId, baseTokenAddr);
+    return formatTokenTag(symbol, decimals);
+  } catch {
+    return null;
+  }
+}
+
+async function formatCometLabel(chainId: number, comet: string): Promise<string> {
+  const metadata = getCometMetadata(chainId, comet);
+  if (metadata) {
+    const label = metadata.name ? `${metadata.name} (${metadata.symbol})` : metadata.symbol;
+    let baseTag: string | null = null;
+    if (metadata.baseTokenAddress) {
+      const { symbol, decimals } = await fetchTokenInfo(chainId, metadata.baseTokenAddress, metadata.baseTokenSymbol);
+      baseTag = formatTokenTag(symbol, decimals);
+    } else if (metadata.baseTokenSymbol) {
+      baseTag = metadata.baseTokenSymbol;
+    }
+    const basePart = baseTag ? ` • base: ${baseTag}` : "";
+    return `${label}${basePart} • ${shortAddr(comet)}`;
+  }
+  const { symbol, decimals } = await fetchTokenInfo(chainId, comet);
+  const cometTag = formatTokenTag(symbol, decimals) ?? shortAddr(comet);
+  const baseTag = await fetchBaseTokenTag(chainId, comet);
+  const basePart = baseTag ? ` • base: ${baseTag}` : "";
+  return `${cometTag}${basePart} • ${shortAddr(comet)}`;
+}
+
+async function formatAssetLabel(chainId: number, comet: string, asset: string): Promise<string> {
+  const metadata = getCometMetadata(chainId, comet);
+  if (!metadata) {
+    const { symbol, decimals } = await fetchTokenInfo(chainId, asset);
+    const tag = formatTokenTag(symbol, decimals);
+    return tag ? `${tag} • ${shortAddr(asset)}` : shortAddr(asset);
+  }
+  const assetMeta = metadata.assetsByAddress[checksum(asset)];
+  if (!assetMeta) {
+    const { symbol, decimals } = await fetchTokenInfo(chainId, asset);
+    const tag = formatTokenTag(symbol, decimals);
+    return tag ? `${tag} • ${shortAddr(asset)}` : shortAddr(asset);
+  }
+  // Override static metadata symbol with precise explorer ticker
+  const explorerToken = await getEtherscanTokenInfo(asset, chainId);
+  const symbol = explorerToken.symbol ?? assetMeta.symbol;
+  const dec = assetMeta.decimals !== undefined ? ` (${assetMeta.decimals} dec.)` : "";
+  return `${symbol}${dec} • ${shortAddr(assetMeta.address)}`;
+}
+
+async function formatBaseTokenLabel(chainId: number, comet: string): Promise<string> {
+  const metadata = getCometMetadata(chainId, comet);
+  if (!metadata) {
+    const baseTag = await fetchBaseTokenTag(chainId, comet);
+    return baseTag ?? "Unknown";
+  }
+  if (metadata.baseTokenAddress) {
+    const { symbol, decimals } = await fetchTokenInfo(chainId, metadata.baseTokenAddress, metadata.baseTokenSymbol);
+    const tag = formatTokenTag(symbol, decimals);
+    return tag ? `${tag} • ${shortAddr(metadata.baseTokenAddress)}` : shortAddr(metadata.baseTokenAddress);
+  }
+  return metadata.baseTokenSymbol ?? "Unknown";
 }
 
 /**
