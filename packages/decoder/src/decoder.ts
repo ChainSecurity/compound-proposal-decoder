@@ -419,12 +419,18 @@ async function resolveAddressMetadataForArgs(
           }
         }
 
+        info.chainId = chainId;
         if (
           !info.contractName &&
           !info.etherscanLabel &&
           !info.tokenSymbol &&
           !info.implementation
         ) {
+          // Still return a minimal entry if chainId differs from mainnet,
+          // so the frontend uses the correct explorer for this address
+          if (chainId !== 1) {
+            return [address, info] as [string, AddressMetadata];
+          }
           return null;
         }
         return [address, info] as [string, AddressMetadata];
@@ -679,9 +685,11 @@ async function decodeActionCall(
   };
 
   // Bridge detection to set effectiveChainId
-  if (expansion.children.length && node.decoded?.name && targetCS) {
+  // Use unwrap() because node.decoded.name may be Sourced<string> when trackSources is enabled
+  const decodedFnName = node.decoded?.name ? unwrap(node.decoded.name) : undefined;
+  if (expansion.children.length && decodedFnName && targetCS) {
     const expectedMethod = BRIDGE_CONTRACTS[targetCS as keyof typeof BRIDGE_CONTRACTS];
-    if (expectedMethod && node.decoded.name === expectedMethod) {
+    if (expectedMethod && decodedFnName === expectedMethod) {
       effectiveChainId = expansion.children[0].nodeInput.chainId;
       logger.debug({ effectiveChainId }, 'Detected bridge transaction');
     }
@@ -691,7 +699,7 @@ async function decodeActionCall(
   if (node.decoded) {
     const gw = TOKEN_GATEWAYS[targetCS as keyof typeof TOKEN_GATEWAYS];
 
-    if (gw && node.decoded.name === gw.method && node.decoded.rawArgs) {
+    if (gw && decodedFnName === gw.method && node.decoded.rawArgs) {
       const srcPart = pickArgs(node.decoded as { argParams: ParamType[]; rawArgs: unknown[] }, gw.srcArgNames);
       const dstPart = pickArgs(node.decoded as { argParams: ParamType[]; rawArgs: unknown[] }, gw.dstArgNames);
 

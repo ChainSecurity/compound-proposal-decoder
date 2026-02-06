@@ -28,6 +28,8 @@ export type AddressMetadata = {
   url?: string | null;
   description?: string | null;
   notes?: string[];
+  /** Chain ID where this address was resolved (for correct explorer links) */
+  chainId?: number;
   implementation?: {
     address: string;
     contractName?: string | null;
@@ -157,6 +159,8 @@ export type SourcedAddressMetadata = {
   url?: string | null;
   description?: string | null;
   notes?: string[];
+  /** Chain ID where this address was resolved (for correct explorer links) */
+  chainId?: number;
   implementation?: {
     address: MaybeSourced<string>;
     contractName?: MaybeSourced<string | null>;

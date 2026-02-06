@@ -57,6 +57,8 @@ export type AddressMetadata = {
   description?: string | null;
   /** Notes supplied by the metadata API */
   notes?: string[];
+  /** Chain ID where this address was resolved (for correct explorer links) */
+  chainId?: number;
   /** If detected as a proxy, the implementation it points to */
   implementation?: {
     address: string;
@@ -78,6 +80,8 @@ export type SourcedAddressMetadata = {
   url?: string | null;
   description?: string | null;
   notes?: string[];
+  /** Chain ID where this address was resolved (for correct explorer links) */
+  chainId?: number;
   implementation?: {
     address: Sourced<string>;
     contractName?: Sourced<string | null>;
