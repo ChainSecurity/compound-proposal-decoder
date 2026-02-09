@@ -23,6 +23,10 @@ export type AddressMetadata = {
   contractName?: string | null;
   etherscanLabel?: string | null;
   tokenSymbol?: string | null;
+  tokenName?: string | null;
+  tokenDecimals?: number | null;
+  baseTokenSymbol?: string | null;
+  baseTokenDecimals?: number | null;
   labels?: string[];
   ensName?: string | null;
   url?: string | null;
@@ -35,6 +39,8 @@ export type AddressMetadata = {
     contractName?: string | null;
     etherscanLabel?: string | null;
     tokenSymbol?: string | null;
+    tokenName?: string | null;
+    tokenDecimals?: number | null;
     labels?: string[];
     ensName?: string | null;
   };
@@ -154,6 +160,10 @@ export type SourcedAddressMetadata = {
   contractName?: Sourced<string | null>;
   etherscanLabel?: Sourced<string | null>;
   tokenSymbol?: Sourced<string | null>;
+  tokenName?: Sourced<string | null>;
+  tokenDecimals?: Sourced<number | null>;
+  baseTokenSymbol?: Sourced<string | null>;
+  baseTokenDecimals?: Sourced<number | null>;
   labels?: string[];
   ensName?: string | null;
   url?: string | null;
@@ -166,6 +176,8 @@ export type SourcedAddressMetadata = {
     contractName?: MaybeSourced<string | null>;
     etherscanLabel?: MaybeSourced<string | null>;
     tokenSymbol?: MaybeSourced<string | null>;
+    tokenName?: MaybeSourced<string | null>;
+    tokenDecimals?: MaybeSourced<number | null>;
     labels?: string[];
     ensName?: string | null;
   };

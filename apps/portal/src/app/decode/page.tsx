@@ -7,7 +7,7 @@ import { ProposalOverview } from "@/components/decoder/proposal-overview";
 import { ActionCard } from "@/components/decoder/action-card";
 import { ActionMinimap, getAllActionIds } from "@/components/decoder/action-minimap";
 import { LoadingSteps } from "@/components/decoder/loading-steps";
-import { ArrowLeft, ChevronUp, ChevronsUpDown, Code2 } from "lucide-react";
+import { ArrowLeft, ChevronUp, ChevronsUpDown, Code2, CheckCircle2 } from "lucide-react";
 import type { DecodeRequest, DecodeResponse, SerializedDecodedProposal } from "@/types/decoder";
 import { unwrap } from "@/types/sources";
 
@@ -16,7 +16,78 @@ function ResultsView({ result, onReset }: { result: SerializedDecodedProposal; o
   const [allExpanded, setAllExpanded] = React.useState(true);
   const [showRawJson, setShowRawJson] = React.useState(false);
   const [showScrollTop, setShowScrollTop] = React.useState(false);
+  const [reviewedIds, setReviewedIds] = React.useState<Set<string>>(new Set());
   const allIds = React.useMemo(() => getAllActionIds(result.calls), [result.calls]);
+
+  // Build parent-child tree relationships from hierarchical IDs
+  const { childrenOf, parentOf, descendantsOf } = React.useMemo(() => {
+    const childrenOf = new Map<string, string[]>();
+    const parentOf = new Map<string, string>();
+
+    for (const id of allIds) {
+      const lastDash = id.lastIndexOf("-");
+      // "action-0" has lastDash=6 → slice(0,6)="action" → top-level, no parent
+      // "action-0-1" has lastDash=8 → slice(0,8)="action-0" → valid parent
+      const parentId = lastDash > 6 ? id.slice(0, lastDash) : null;
+      if (parentId) {
+        parentOf.set(id, parentId);
+        if (!childrenOf.has(parentId)) childrenOf.set(parentId, []);
+        childrenOf.get(parentId)!.push(id);
+      }
+    }
+
+    function getDescendants(id: string): string[] {
+      const children = childrenOf.get(id) ?? [];
+      return children.flatMap((c) => [c, ...getDescendants(c)]);
+    }
+
+    const descendantsOf = new Map<string, string[]>();
+    for (const id of allIds) {
+      descendantsOf.set(id, getDescendants(id));
+    }
+
+    return { childrenOf, parentOf, descendantsOf };
+  }, [allIds]);
+
+  const toggleReviewed = React.useCallback((id: string) => {
+    setReviewedIds((prev) => {
+      const next = new Set(prev);
+      const wasReviewed = next.has(id);
+
+      if (wasReviewed) {
+        // Uncheck: remove self + all descendants
+        next.delete(id);
+        for (const desc of descendantsOf.get(id) ?? []) {
+          next.delete(desc);
+        }
+        // Uncheck all ancestors (no longer fully reviewed)
+        let current = parentOf.get(id);
+        while (current) {
+          next.delete(current);
+          current = parentOf.get(current);
+        }
+      } else {
+        // Check: add self + all descendants
+        next.add(id);
+        for (const desc of descendantsOf.get(id) ?? []) {
+          next.add(desc);
+        }
+        // Auto-check ancestors if all their children are now reviewed
+        let current = parentOf.get(id);
+        while (current) {
+          const siblings = childrenOf.get(current) ?? [];
+          if (siblings.every((s) => next.has(s))) {
+            next.add(current);
+          } else {
+            break;
+          }
+          current = parentOf.get(current);
+        }
+      }
+
+      return next;
+    });
+  }, [childrenOf, parentOf, descendantsOf]);
 
   const proposalId = unwrap(result.proposalId);
   const proposalTitle = proposalId !== "0"
@@ -122,6 +193,12 @@ function ResultsView({ result, onReset }: { result: SerializedDecodedProposal; o
             <span className="text-sm text-slate-400">
               {result.calls.length} {result.calls.length === 1 ? "action" : "actions"}
             </span>
+            {reviewedIds.size > 0 && (
+              <span className="flex items-center gap-1.5 text-sm text-emerald-600">
+                <CheckCircle2 className="w-4 h-4" />
+                {reviewedIds.size} / {allIds.length} reviewed
+              </span>
+            )}
             <div className="flex-1" />
             {/* Action buttons */}
             <div className="flex items-center gap-2">
@@ -160,7 +237,11 @@ function ResultsView({ result, onReset }: { result: SerializedDecodedProposal; o
               {/* Left sidebar with stats */}
               <div className="lg:w-64 shrink-0">
                 <div className="lg:sticky lg:top-8">
-                  <ProposalOverview proposal={result} />
+                  <ProposalOverview
+                    proposal={result}
+                    reviewedCount={reviewedIds.size}
+                    totalCount={allIds.length}
+                  />
                 </div>
               </div>
 
@@ -175,6 +256,8 @@ function ResultsView({ result, onReset }: { result: SerializedDecodedProposal; o
                       total={result.calls.length}
                       id={`action-${idx}`}
                       defaultExpanded={allExpanded}
+                      reviewedIds={reviewedIds}
+                      onToggleReviewed={toggleReviewed}
                     />
                   ))}
                 </div>
@@ -187,6 +270,7 @@ function ResultsView({ result, onReset }: { result: SerializedDecodedProposal; o
                     calls={result.calls}
                     activeId={activeId}
                     onSelect={scrollToAction}
+                    reviewedIds={reviewedIds}
                   />
                 </div>
               </div>

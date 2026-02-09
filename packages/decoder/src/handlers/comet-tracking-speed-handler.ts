@@ -1,6 +1,6 @@
 import { Interface, JsonRpcProvider, formatUnits } from "ethers";
 import { checksum } from "@/utils";
-import { getAbiFor, getImplementationAddress, getProviderFor } from "@/ethers";
+import { getAbiFor, getImplementationAddress, getProviderFor, getEtherscanTokenInfo, longestSymbol } from "@/ethers";
 import { insight, selectorOfSig, type Handler, type InsightRequest } from "@/registry";
 import { logger } from "@/logger";
 import { getCometMetadata } from "@/lib/comet-metadata";
@@ -37,11 +37,82 @@ async function getCometInterface(
   }
 }
 
-function formatCometLabel(chainId: number, comet: string): string {
+const ERC20_INFO_ABI = [
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+];
+
+const COMET_BASE_TOKEN_ABI = ["function baseToken() view returns (address)"];
+
+function shortAddr(address: string): string {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function formatTokenTag(symbol: string | null, decimals: number | null): string | null {
+  if (!symbol) return null;
+  const dec = decimals !== null ? ` (${decimals} dec.)` : "";
+  return `${symbol}${dec}`;
+}
+
+async function fetchTokenInfo(chainId: number, address: string, staticSymbol?: string | null): Promise<{ symbol: string | null; decimals: number | null }> {
+  // Try explorer page for precise ticker (e.g. "USDC.e" not "USDC")
+  const explorerToken = await getEtherscanTokenInfo(address, chainId);
+  const bestStatic = explorerToken.symbol ?? staticSymbol ?? null;
+
+  try {
+    const provider = getProviderFor(chainId);
+    const iface = new Interface(ERC20_INFO_ABI);
+    const [symRes, decRes] = await Promise.allSettled([
+      provider.call({ to: address, data: iface.encodeFunctionData("symbol") }),
+      provider.call({ to: address, data: iface.encodeFunctionData("decimals") }),
+    ]);
+    const onChainSymbol = symRes.status === "fulfilled"
+      ? (iface.decodeFunctionResult("symbol", symRes.value)[0] as string)
+      : null;
+    const decimals = decRes.status === "fulfilled"
+      ? Number(iface.decodeFunctionResult("decimals", decRes.value)[0])
+      : null;
+    // Pick the longest symbol (longer ≈ more informative, e.g. "USDC.e" > "USDC")
+    const symbol = longestSymbol(bestStatic, onChainSymbol);
+    return { symbol, decimals };
+  } catch {
+    return { symbol: bestStatic, decimals: null };
+  }
+}
+
+async function fetchBaseTokenTag(chainId: number, cometProxy: string): Promise<string | null> {
+  try {
+    const provider = getProviderFor(chainId);
+    const iface = new Interface(COMET_BASE_TOKEN_ABI);
+    const result = await provider.call({ to: cometProxy, data: iface.encodeFunctionData("baseToken") });
+    const [baseTokenAddr] = iface.decodeFunctionResult("baseToken", result);
+    if (!baseTokenAddr || typeof baseTokenAddr !== "string") return null;
+    const { symbol, decimals } = await fetchTokenInfo(chainId, baseTokenAddr);
+    return formatTokenTag(symbol, decimals);
+  } catch {
+    return null;
+  }
+}
+
+async function formatCometLabel(chainId: number, comet: string): Promise<string> {
   const metadata = getCometMetadata(chainId, comet);
-  if (!metadata) return comet;
-  const label = metadata.name ? `${metadata.name} (${metadata.symbol})` : metadata.symbol;
-  return `${label} • ${comet}`;
+  if (metadata) {
+    const label = metadata.name ? `${metadata.name} (${metadata.symbol})` : metadata.symbol;
+    let baseTag: string | null = null;
+    if (metadata.baseTokenAddress) {
+      const { symbol, decimals } = await fetchTokenInfo(chainId, metadata.baseTokenAddress, metadata.baseTokenSymbol);
+      baseTag = formatTokenTag(symbol, decimals);
+    } else if (metadata.baseTokenSymbol) {
+      baseTag = metadata.baseTokenSymbol;
+    }
+    const basePart = baseTag ? ` • base: ${baseTag}` : "";
+    return `${label}${basePart} • ${shortAddr(comet)}`;
+  }
+  const { symbol, decimals } = await fetchTokenInfo(chainId, comet);
+  const cometTag = formatTokenTag(symbol, decimals) ?? shortAddr(comet);
+  const baseTag = await fetchBaseTokenTag(chainId, comet);
+  const basePart = baseTag ? ` • base: ${baseTag}` : "";
+  return `${cometTag}${basePart} • ${shortAddr(comet)}`;
 }
 
 function formatRate(value: bigint): string {
@@ -79,7 +150,7 @@ export const cometTrackingSpeedHandler: Handler = {
         insight({
           title: "Tracking Speed Update (No RPC)",
           entries: [
-            { label: "Comet", value: formatCometLabel(ctx.chainId, cometProxy) },
+            { label: "Comet", value: await formatCometLabel(ctx.chainId, cometProxy) },
             { label: "New Speed", value: newSpeed.toString() },
             { label: "Status", value: "Configure RPC to fetch trackingIndexScale" },
           ],
@@ -95,7 +166,7 @@ export const cometTrackingSpeedHandler: Handler = {
         insight({
           title: "Tracking Speed Update (ABI Missing)",
           entries: [
-            { label: "Comet", value: formatCometLabel(ctx.chainId, cometProxy) },
+            { label: "Comet", value: await formatCometLabel(ctx.chainId, cometProxy) },
             { label: "New Speed", value: newSpeed.toString() },
             { label: "Status", value: "Comet ABI missing" },
           ],
@@ -118,7 +189,7 @@ export const cometTrackingSpeedHandler: Handler = {
         insight({
           title: "Tracking Speed Update (Failed to get trackingIndexScale)",
           entries: [
-            { label: "Comet", value: formatCometLabel(ctx.chainId, cometProxy) },
+            { label: "Comet", value: await formatCometLabel(ctx.chainId, cometProxy) },
             { label: "New Speed", value: newSpeed.toString() },
             { label: "Status", value: `Failed to get trackingIndexScale: ${err}` },
           ],
@@ -146,7 +217,7 @@ export const cometTrackingSpeedHandler: Handler = {
     const newScaledSpeed = (newSpeed * SCALING_FACTOR * 1000000000000000000n) / trackingIndexScale;
 
     const entries = [
-      { label: "Comet", value: formatCometLabel(ctx.chainId, cometProxy) },
+      { label: "Comet", value: await formatCometLabel(ctx.chainId, cometProxy) },
       { label: "Tracking Index Scale", value: `${formatUnits(trackingIndexScale, 18)} (raw ${trackingIndexScale.toString()})` },
     ];
 

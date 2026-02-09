@@ -410,6 +410,8 @@ async function resolveAddressMetadataForArgs(
                 contractName: implMeta.contractName,
                 etherscanLabel: implMeta.etherscanLabel,
                 tokenSymbol: implMeta.tokenSymbol,
+                tokenName: implMeta.tokenName,
+                tokenDecimals: implMeta.tokenDecimals,
                 labels: implMeta.labels,
                 ensName: implMeta.ensName,
               };
