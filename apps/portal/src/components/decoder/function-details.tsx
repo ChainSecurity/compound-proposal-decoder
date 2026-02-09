@@ -77,18 +77,17 @@ const GENERIC_PROXY_NAMES = [
   "Token",
 ];
 
-// Build a human-readable token label from address metadata (ticker + decimals + base token)
+// Build a human-readable token label from address metadata (ticker + base token)
+// Decimals are intentionally omitted here — they appear only in insights.
 function buildTokenLabel(
   meta: AddressMetadata | SourcedAddressMetadata
 ): { label: string | null; source?: DataSource } {
   const symbol = getValue(meta.tokenSymbol);
-  const decimals = getValue(meta.tokenDecimals);
   const baseSymbol = getValue(meta.baseTokenSymbol);
 
   if (!symbol) return { label: null };
 
-  const dec = decimals !== null && decimals !== undefined ? ` (${decimals} dec.)` : "";
-  let label = `${symbol}${dec}`;
+  let label = symbol;
 
   // Append base token for Comet proxies
   if (baseSymbol) {
