@@ -8,6 +8,8 @@ import type {
   ConfigSaveResponse,
 } from "@/types/config";
 import { validateConfig } from "@/lib/config-validation";
+import { clearConfigCache as clearDecoderConfigCache } from "@compound-security/decoder";
+import { clearConfigCache as clearSimulatorConfigCache } from "@compound-security/simulator";
 
 // process.cwd() is the portal directory (apps/portal), go up 2 levels to monorepo root
 const MONOREPO_ROOT = join(process.cwd(), "..", "..");
@@ -101,6 +103,10 @@ export async function POST(
 
     // Write to file
     await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", "utf-8");
+
+    // Invalidate in-memory config caches so subsequent requests use the new config
+    clearDecoderConfigCache();
+    clearSimulatorConfigCache();
 
     // Return warnings for the saved config
     const warnings = validateConfig(config);

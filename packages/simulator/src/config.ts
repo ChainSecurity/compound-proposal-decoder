@@ -34,6 +34,15 @@ interface RawConfig {
 let cachedConfig: Config | null = null;
 let cachedRawConfig: RawConfig | null = null;
 
+/**
+ * Clear the cached config so the next call to loadConfig() re-reads from disk.
+ * Used by the portal to pick up config changes at runtime.
+ */
+export function clearConfigCache(): void {
+  cachedConfig = null;
+  cachedRawConfig = null;
+}
+
 function getRawConfig(): RawConfig {
   if (cachedRawConfig) return cachedRawConfig;
   cachedRawConfig = JSON.parse(readFileSync(CONFIG_PATH, "utf-8")) as RawConfig;

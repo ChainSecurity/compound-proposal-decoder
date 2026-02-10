@@ -32,6 +32,14 @@ export interface AppConfig {
 
 let cachedConfig: AppConfig | null = null;
 
+/**
+ * Clear the cached config so the next call to loadConfig() re-reads from disk.
+ * Used by the portal to pick up config changes at runtime.
+ */
+export function clearConfigCache(): void {
+  cachedConfig = null;
+}
+
 export function loadConfig(): AppConfig {
   if (cachedConfig) return cachedConfig;
   const raw = readFileSync(CONFIG_PATH, "utf-8");

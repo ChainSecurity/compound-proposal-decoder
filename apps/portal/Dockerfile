@@ -57,8 +57,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/portal/.next/static ./apps/p
 
 # Copy vendor for decoder runtime access
 COPY --from=builder /app/vendor ./vendor
-# Copy config files for runtime access
-COPY --from=builder /app/compound-config.json* ./
+# Copy config files for runtime access (needs write permission for /config page)
+COPY --from=builder --chown=nextjs:nodejs /app/compound-config.json* ./
 # Copy snapshots directory for runtime access (shared between CLI and portal)
 COPY --from=builder /app/.snapshot[s] ./.snapshots/
 

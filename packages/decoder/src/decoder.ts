@@ -912,3 +912,5 @@ export type {
   SourcedAbi,
   SourcedContractName,
 } from "./ethers.js";
+
+export { clearConfigCache } from "./config.js";

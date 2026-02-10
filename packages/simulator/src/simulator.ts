@@ -30,7 +30,7 @@ import type {
     RevertResult,
     BackendType,
 } from "./types";
-import { loadConfig } from "./config";
+import { loadConfig, clearConfigCache } from "./config";
 import { createBackend } from "./backends";
 import type { SimulationContext, Logger } from "./core/types";
 import { nullLogger } from "./core/types";
@@ -81,12 +81,11 @@ export type { Backend } from "./backends";
 // Re-export core types
 export type { Logger, SimulationContext } from "./core/types";
 export { nullLogger } from "./core/types";
+export { clearConfigCache } from "./config";
 
 // Re-export proposal utilities
 export type { ProposalDetails } from "./core/proposals";
 export { parseProposalCalldata, detectL2Chains } from "./core";
-
-const config = loadConfig();
 
 // ============ Internal Helpers ============
 
@@ -232,7 +231,7 @@ export async function simulateProposal(
     const { proposalId, mode = "governance", backend: backendType = "tenderly" } = options;
 
     // Fetch proposal from on-chain
-    const tempProvider = new ethers.JsonRpcProvider(config.chains.mainnet.rpcUrl);
+    const tempProvider = new ethers.JsonRpcProvider(loadConfig().chains.mainnet.rpcUrl);
     const proposal = await getProposal(proposalId, tempProvider);
 
     return simulateFromProposal(proposal, proposalId, mode, backendType);
@@ -242,14 +241,14 @@ export async function simulateProposal(
  * Get the current configuration
  */
 export function getConfig(): Config {
-    return config;
+    return loadConfig();
 }
 
 /**
  * Get available chain names
  */
 export function getChainNames(): string[] {
-    return Object.keys(config.chains);
+    return Object.keys(loadConfig().chains);
 }
 
 /**
@@ -418,6 +417,6 @@ export async function revertAllChains(
     snapshotRef?: string,
     backendType: BackendType = "tenderly"
 ): Promise<RevertResult[]> {
-    const chains = Object.keys(config.chains);
+    const chains = Object.keys(loadConfig().chains);
     return revertChains(chains, snapshotRef, backendType);
 }
