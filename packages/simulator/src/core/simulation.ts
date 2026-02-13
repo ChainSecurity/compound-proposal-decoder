@@ -437,13 +437,24 @@ export async function simulateL2(
     const timelock = new ethers.Contract(timelockAddress, timelockABI, provider);
     const alias = chainConfig.l2msgsender!;
 
-    // Set cross-chain message sender for OP-stack chains
+    // Set cross-chain message sender (xDomainMessageSender) so the bridge receiver
+    // accepts the call as coming from the L1 timelock.
+    // OP-Stack chains (Optimism, Base, Mantle) store xDomainMsgSender at slot 0xcc (204).
+    // Scroll has a different contract (L2ScrollMessenger) with xDomainMessageSender at slot 0xc9 (201).
     if (["base", "optimism", "mantle"].includes(chain)) {
         logger.step("Setting cross-chain message sender");
         await backend.setStorageAt(
             chain,
             alias,
             "0x00000000000000000000000000000000000000000000000000000000000000cc",
+            "0x0000000000000000000000006d903f6003cca6255D85CcA4D3B5E5146dC33925"
+        );
+    } else if (chain === "scroll") {
+        logger.step("Setting cross-chain message sender");
+        await backend.setStorageAt(
+            chain,
+            alias,
+            "0x00000000000000000000000000000000000000000000000000000000000000c9",
             "0x0000000000000000000000006d903f6003cca6255D85CcA4D3B5E5146dC33925"
         );
     }
