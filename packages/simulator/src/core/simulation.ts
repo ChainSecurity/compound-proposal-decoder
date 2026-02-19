@@ -210,7 +210,8 @@ async function advanceAndQueue(
 async function advanceAndExecute(
     proposalId: string,
     chain: string,
-    ctx: SimulationContext
+    ctx: SimulationContext,
+    proposal: Proposal
 ): Promise<ChainExecutionResult> {
     const { backend, logger } = ctx;
     const chainConfig = config.chains[chain];
@@ -239,11 +240,9 @@ async function advanceAndExecute(
     await backend.mineBlock(chain, { timestamp: executionTimestamp });
     await backend.mineBlock(chain);
 
-    // Apply proposal-specific patches
-    if (proposalId == "524") {
-        const { applyPatch524 } = await import("../patches/patch-524");
-        await applyPatch524(backend, chain);
-    }
+    // Apply CCIP timestamp patches if proposal targets the CCIP Router
+    const { applyCCIPTimestampPatches } = await import("../patches/ccip-timestamps");
+    await applyCCIPTimestampPatches(backend, chain, proposal);
 
     // Execute proposal
     logger.step("Executing proposal");
@@ -316,7 +315,7 @@ export async function runGovernanceFlow(
     // Run the governance flow
     await advanceAndVote(proposalId, chain, ctx);
     await advanceAndQueue(proposalId, chain, ctx);
-    return await advanceAndExecute(proposalId, chain, ctx);
+    return await advanceAndExecute(proposalId, chain, ctx, proposal);
 }
 
 /**
@@ -369,10 +368,13 @@ export async function simulateGovernance(
         actualProposalId = await submitProposal(proposal, proposalId, chain, ctx);
     }
 
+    // Ensure we have the proposal object for CCIP detection
+    const resolvedProposal = proposal ?? await getProposal(proposalId, provider);
+
     // Run the governance flow steps
     await advanceAndVote(actualProposalId, chain, ctx);
     await advanceAndQueue(actualProposalId, chain, ctx);
-    const result = await advanceAndExecute(actualProposalId, chain, ctx);
+    const result = await advanceAndExecute(actualProposalId, chain, ctx, resolvedProposal);
 
     return {
         result,
