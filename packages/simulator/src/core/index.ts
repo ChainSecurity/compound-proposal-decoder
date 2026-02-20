@@ -10,15 +10,18 @@ export type { Logger, SimulationContext, GovernanceSimulationResult } from "./ty
 export { nullLogger } from "./types";
 
 // Constants
-export { TUPLE_TYPES, bridgeABIs, messageIndex, GAS_LIMIT } from "./constants";
+export { TUPLE_TYPES, bridgeABIs, messageIndex, GAS_LIMIT, CCIP_ROUTER, CCIP_CHAIN_SELECTORS } from "./constants";
 
 // Proposal functions
 export {
     getProposal,
     selectorOfSig,
     extractBridgedProposal,
+    extractCCIPBridgedProposal,
     detectL2Chains,
     targetToL2Chain,
+    isCCIPTarget,
+    ccipTargetToL2Chain,
     parseProposalCalldata,
 } from "./proposals";
 export type { ProposalDetails } from "./proposals";
@@ -43,6 +46,7 @@ export {
     runGovernanceFlow,
     simulateBridging,
     simulateL2,
+    simulateCCIPL2,
     runDirect,
     runDirectWithL2,
     submitProposalFromCalldata,

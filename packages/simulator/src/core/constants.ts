@@ -49,3 +49,19 @@ export const messageIndex: Record<string, number> = {
  * Gas limit warning threshold
  */
 export const GAS_LIMIT = 10_000_000;
+
+/**
+ * CCIP Router address on Ethereum mainnet
+ */
+export const CCIP_ROUTER = "0x80226fc0Ee2b096224EeAc085Bb9a8cba1146f7D";
+
+/**
+ * CCIP chain selectors → config chain names
+ *
+ * Maps Chainlink CCIP destination chain selectors to the chain names
+ * used in compound-config.json. Add entries here to support new CCIP
+ * destination chains.
+ */
+export const CCIP_CHAIN_SELECTORS: Record<string, string> = {
+    "6916147374840168594": "ronin",
+};

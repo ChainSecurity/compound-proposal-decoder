@@ -7,7 +7,7 @@ import { governorABI } from "../abis";
 import { zip } from "../utils";
 import { loadConfig } from "../config";
 import type { Proposal } from "../types";
-import { TUPLE_TYPES, bridgeABIs, messageIndex } from "./constants";
+import { TUPLE_TYPES, bridgeABIs, messageIndex, CCIP_ROUTER, CCIP_CHAIN_SELECTORS } from "./constants";
 
 const config = loadConfig();
 const coder = AbiCoder.defaultAbiCoder();
@@ -69,17 +69,76 @@ export function extractBridgedProposal(calldata: string, chain: string): Proposa
     };
 }
 
+// ============ CCIP Support ============
+
+const ccipIface = new Interface([
+    "function ccipSend(uint64 destinationChainSelector, tuple(bytes receiver, bytes data, tuple(address token, uint256 amount)[] tokenAmounts, address feeToken, bytes extraArgs) message) external payable returns (bytes32)",
+]);
+
+/**
+ * Check if a target address is the CCIP Router
+ */
+export function isCCIPTarget(target: string): boolean {
+    return target.toLowerCase() === CCIP_ROUTER.toLowerCase();
+}
+
+/**
+ * Get the L2 chain name for a CCIP ccipSend call by parsing its calldata
+ */
+export function ccipTargetToL2Chain(calldata: string): string | undefined {
+    try {
+        const parsed = ccipIface.parseTransaction({ data: calldata });
+        if (!parsed) return undefined;
+        const chainSelector = parsed.args[0].toString();
+        return CCIP_CHAIN_SELECTORS[chainSelector];
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * Extract a bridged proposal from CCIP ccipSend calldata
+ *
+ * The CCIP message data field contains:
+ *   abi.encode(address[] targets, uint256[] values, string[] signatures, bytes[] calldatas)
+ */
+export function extractCCIPBridgedProposal(calldata: string): Proposal {
+    const parsed = ccipIface.parseTransaction({ data: calldata });
+    if (!parsed) throw new Error("Failed to parse ccipSend calldata");
+
+    const message = parsed.args[1];
+    const data: string = message.data;
+
+    const decoded = coder.decode(TUPLE_TYPES, data);
+    const calldatas = zip(decoded[2] as string[], decoded[3] as string[]).map(
+        (entry) => selectorOfSig(entry[0]) + entry[1].slice(2),
+    );
+
+    return {
+        targets: decoded[0] as string[],
+        values: decoded[1] as bigint[],
+        calldatas,
+    };
+}
+
+// ============ Chain Detection ============
+
 /**
  * Detect which L2 chains are targeted by a proposal
  */
 export function detectL2Chains(proposal: Proposal): string[] {
     const chains: string[] = [];
-    for (const target of proposal.targets) {
+    for (let i = 0; i < proposal.targets.length; i++) {
+        const target = proposal.targets[i]!;
         if (target === config.chains.scroll?.bridge) chains.push("scroll");
         else if (target === config.chains.arbitrum?.bridge) chains.push("arbitrum");
         else if (target === config.chains.optimism?.bridge) chains.push("optimism");
         else if (target === config.chains.base?.bridge) chains.push("base");
         else if (target === config.chains.mantle?.bridge) chains.push("mantle");
+        else if (isCCIPTarget(target)) {
+            const chain = ccipTargetToL2Chain(proposal.calldatas[i]!);
+            if (chain) chains.push(chain);
+        }
     }
     return [...new Set(chains)]; // Remove duplicates
 }

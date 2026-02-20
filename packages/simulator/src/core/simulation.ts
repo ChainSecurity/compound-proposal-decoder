@@ -5,7 +5,7 @@
  * the CLI (main.ts) and library (simulator.ts) entry points.
  */
 
-import { ethers, Interface } from "ethers";
+import { ethers, AbiCoder, Interface } from "ethers";
 import {
     governorABI,
     receiverABI,
@@ -21,11 +21,14 @@ import type {
     TransactionExecution,
 } from "../types";
 import type { SimulationContext, GovernanceSimulationResult } from "./types";
-import { bridgeABIs, messageIndex } from "./constants";
+import { bridgeABIs, messageIndex, CCIP_ROUTER } from "./constants";
 import {
     getProposal,
     extractBridgedProposal,
+    extractCCIPBridgedProposal,
     targetToL2Chain,
+    isCCIPTarget,
+    ccipTargetToL2Chain,
 } from "./proposals";
 import {
     createSnapshot,
@@ -400,11 +403,25 @@ export async function simulateBridging(
     const results: ChainExecutionResult[] = [];
 
     for (let i = 0; i < proposal.targets.length; i++) {
-        const l2 = targetToL2Chain(proposal.targets[i]!);
-        if (!l2) continue;
+        const target = proposal.targets[i]!;
+        const calldata = proposal.calldatas[i]!;
 
-        const result = await simulateL2(l2, proposal.calldatas[i]!, ctx);
-        results.push(result);
+        // Traditional L2 bridges
+        const l2 = targetToL2Chain(target);
+        if (l2) {
+            const result = await simulateL2(l2, calldata, ctx);
+            results.push(result);
+            continue;
+        }
+
+        // CCIP bridges (e.g. Ronin)
+        if (isCCIPTarget(target)) {
+            const chain = ccipTargetToL2Chain(calldata);
+            if (chain) {
+                const result = await simulateCCIPL2(chain, calldata, ctx);
+                results.push(result);
+            }
+        }
     }
 
     return results;
@@ -512,6 +529,131 @@ export async function simulateL2(
         executions: [{
             index: 0,
             target: chainConfig.receiver!,
+            value: 0n,
+            calldata: executeTx.data!,
+            success,
+            gasUsed,
+            txHash: executeResult,
+            revertReason,
+        }],
+        totalGasUsed: gasUsed,
+        persisted: true,
+        rpcUrl: getSimulatorRpcUrl(chain),
+    };
+}
+
+/**
+ * Simulate execution on a CCIP destination chain (e.g. Ronin)
+ *
+ * Similar to simulateL2 but uses CCIP-specific flow:
+ * 1. Impersonate the CCIP Router on the destination chain
+ * 2. Call ccipReceive() on the receiver contract
+ * 3. Wait for the grace period
+ * 4. Execute the queued proposal via the receiver
+ */
+export async function simulateCCIPL2(
+    chain: string,
+    calldata: string,
+    ctx: SimulationContext
+): Promise<ChainExecutionResult> {
+    const { backend, logger } = ctx;
+
+    logger.section(chain);
+
+    // Create snapshot for chain before execution
+    if (backend.supportsPersistentSnapshots()) {
+        await createSnapshot(chain, backend, logger);
+    }
+
+    const provider = backend.getProvider(chain);
+    const chainConfig = config.chains[chain];
+    const receiverAddress = chainConfig.receiver!;
+
+    // Parse the ccipSend calldata to extract the CCIP message fields
+    const ccipSendIface = new Interface([
+        "function ccipSend(uint64 destinationChainSelector, tuple(bytes receiver, bytes data, tuple(address token, uint256 amount)[] tokenAmounts, address feeToken, bytes extraArgs) message) external payable returns (bytes32)",
+    ]);
+    const parsed = ccipSendIface.parseTransaction({ data: calldata });
+    if (!parsed) throw new Error("Failed to parse ccipSend calldata");
+
+    const sourceChainSelector = parsed.args[0];
+    const message = parsed.args[1];
+    const messageData: string = message.data;
+
+    // Build the Any2EVMMessage struct for ccipReceive
+    const ccipReceiverIface = new Interface([
+        "function ccipReceive(tuple(bytes32 messageId, uint64 sourceChainSelector, bytes sender, bytes data, tuple(address token, uint256 amount)[] destTokenAmounts) message)",
+    ]);
+    const coder = AbiCoder.defaultAbiCoder();
+
+    // sourceChainSelector for Ethereum mainnet (where the ccipSend originates)
+    const ETH_MAINNET_CCIP_SELECTOR = "5009297550715157269";
+    // govTimelock is the mainnet timelock — the sender the receiver expects
+    const govTimelock = config.chains.mainnet.timelockAddress;
+    const encodedSender = coder.encode(["address"], [govTimelock]);
+
+    const ccipReceiveTx = ccipReceiverIface.encodeFunctionData("ccipReceive", [{
+        messageId: ethers.keccak256(ethers.toUtf8Bytes(`simulation-${Date.now()}`)),
+        sourceChainSelector: ETH_MAINNET_CCIP_SELECTOR,
+        sender: encodedSender,
+        data: messageData,
+        destTokenAmounts: [],
+    }]);
+
+    // The CCIP receiver trusts calls from the L2 CCIP Router
+    const l2Router = chainConfig.l2msgsender!;
+    await backend.impersonateAccount(chain, l2Router);
+
+    logger.step("Sending CCIP message to receiver");
+    await backend.sendTransaction(chain, {
+        from: l2Router,
+        to: receiverAddress,
+        data: ccipReceiveTx,
+    });
+
+    // Use the standard receiver ABI for executeProposal / localTimelock
+    const receiver = new ethers.Contract(receiverAddress, receiverABI, provider);
+    const timelockAddress = await receiver.localTimelock();
+    const timelock = new ethers.Contract(timelockAddress, timelockABI, provider);
+
+    const gracePeriod = Number(await timelock.GRACE_PERIOD());
+    logger.step(`Advancing time by ${gracePeriod.toLocaleString()} seconds`);
+    const currentBlock = await provider.getBlock("latest");
+    const currentTimestamp = currentBlock!.timestamp;
+    const executionTimestamp = currentTimestamp + gracePeriod;
+
+    await backend.mineBlock(chain, { timestamp: executionTimestamp });
+
+    const proposalIdOnChain = await receiver.proposalCount();
+    await backend.mineBlock(chain);
+
+    logger.step("Executing proposal");
+    const executeTx = await receiver.executeProposal.populateTransaction(proposalIdOnChain);
+    const executeResult = await backend.sendTransaction(chain, {
+        from: l2Router,
+        to: receiverAddress,
+        data: executeTx.data!,
+    });
+    logger.done("Execution complete");
+    logger.tx("Execute proposal", executeResult);
+
+    const receipt = await provider.waitForTransaction(executeResult);
+    const success = receipt?.status === 1;
+    const gasUsed = receipt?.gasUsed;
+
+    let revertReason: string | undefined;
+    if (!success && executeResult) {
+        revertReason = await getRevertReason(provider, executeResult);
+    }
+
+    return {
+        chain,
+        chainId: chainConfig.chainId,
+        success,
+        timelockAddress: timelockAddress as string,
+        executions: [{
+            index: 0,
+            target: receiverAddress,
             value: 0n,
             calldata: executeTx.data!,
             success,
@@ -665,12 +807,27 @@ export async function runDirectWithL2(
 
     // Process L2 bridges
     for (let i = 0; i < proposal.targets.length; i++) {
-        const l2 = targetToL2Chain(proposal.targets[i]!);
-        if (!l2) continue;
+        const target = proposal.targets[i]!;
+        const calldata = proposal.calldatas[i]!;
 
-        const bridgedProposal = extractBridgedProposal(proposal.calldatas[i]!, l2);
-        const l2Result = await runDirect(bridgedProposal, l2, persist, ctx);
-        results.push(l2Result);
+        // Traditional L2 bridges
+        const l2 = targetToL2Chain(target);
+        if (l2) {
+            const bridgedProposal = extractBridgedProposal(calldata, l2);
+            const l2Result = await runDirect(bridgedProposal, l2, persist, ctx);
+            results.push(l2Result);
+            continue;
+        }
+
+        // CCIP bridges (e.g. Ronin)
+        if (isCCIPTarget(target)) {
+            const ccipChain = ccipTargetToL2Chain(calldata);
+            if (ccipChain) {
+                const bridgedProposal = extractCCIPBridgedProposal(calldata);
+                const l2Result = await runDirect(bridgedProposal, ccipChain, persist, ctx);
+                results.push(l2Result);
+            }
+        }
     }
 
     return results;

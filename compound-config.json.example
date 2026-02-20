@@ -75,7 +75,11 @@
     "ronin": {
       "chainId": 2020,
       "rpcUrl": "https://api.roninchain.com/rpc",
-      "directory": "ronin"
+      "simulatorRpcUrl": "https://virtual.ronin.rpc.tenderly.co/<your-virtual-testnet-id>",
+      "directory": "ronin",
+      "timelockAddress": "0xBbb0Ebd903fafbb8fFF58B922fD0CD85E251ac2c",
+      "receiver": "0x2c7EfA766338D33B9192dB1fB5D170Bdc03ef3F9",
+      "l2msgsender": "0x46527571D5D1B68eE7Eb60B18A32e6C60DcEAf99"
     }
   },
   "defaults": {
