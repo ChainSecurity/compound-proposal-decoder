@@ -50,6 +50,8 @@ export interface CrossChainActionResult {
   status: CrossChainStatus;
   l2ProposalId?: number;
   eta?: number;
+  creationTxHash?: string;
+  executionTxHash?: string;
   error?: string;
 }
 

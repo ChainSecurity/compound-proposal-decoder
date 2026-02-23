@@ -34,6 +34,12 @@ describe("trackProposal (e2e)", () => {
     expect(baseAction).toBeDefined();
     expect(baseAction!.status).toBe("executed");
     expect(baseAction!.l2ProposalId).toBeDefined();
+
+    // Tx hashes should be present for executed proposals
+    expect(baseAction!.creationTxHash).toBeDefined();
+    expect(baseAction!.creationTxHash).toMatch(/^0x[a-fA-F0-9]{64}$/);
+    expect(baseAction!.executionTxHash).toBeDefined();
+    expect(baseAction!.executionTxHash).toMatch(/^0x[a-fA-F0-9]{64}$/);
   });
 
   it("returns valid governor state enum values", async () => {

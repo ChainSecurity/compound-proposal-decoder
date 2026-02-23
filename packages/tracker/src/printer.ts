@@ -1,6 +1,7 @@
 import chalk from "chalk";
 import type { BatchTrackingResult, TrackingResult, CrossChainActionResult } from "./types.js";
 import { GovernorState } from "./types.js";
+import { getTxExplorerUrl } from "./explorer.js";
 
 const STATUS_DISPLAY: Record<string, { icon: string; color: (s: string) => string }> = {
   executed: { icon: "●", color: chalk.green },
@@ -65,6 +66,20 @@ export function prettyPrint(result: TrackingResult): void {
       }
 
       console.log(`    ${statusText}  ${actionLabel}${extra}`);
+
+      // Show explorer links for tx hashes
+      if (result.creationTxHash) {
+        const url = getTxExplorerUrl(result.action.chainId, result.creationTxHash);
+        if (url) {
+          console.log(chalk.dim(`      Created:  ${url}`));
+        }
+      }
+      if (result.executionTxHash) {
+        const url = getTxExplorerUrl(result.action.chainId, result.executionTxHash);
+        if (url) {
+          console.log(chalk.dim(`      Executed: ${url}`));
+        }
+      }
     }
     console.log();
   }

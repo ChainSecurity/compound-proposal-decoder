@@ -24,6 +24,12 @@ interface ProposalCreatedEvent {
   id: number;
   targets: string[];
   eta: number;
+  transactionHash: string;
+}
+
+interface ProposalExecutedEvent {
+  id: number;
+  transactionHash: string;
 }
 
 /**
@@ -72,8 +78,54 @@ async function queryProposalCreatedEvents(
       id: Number(parsed.args[1]),
       targets: Array.from(parsed.args[2] as string[]),
       eta: Number(parsed.args[6]),
+      transactionHash: log.transactionHash,
     };
   }).filter((e): e is ProposalCreatedEvent => e !== null);
+}
+
+/**
+ * Query ProposalExecuted events from a receiver contract.
+ * Uses the same progressive block-range fallback as queryProposalCreatedEvents.
+ */
+async function queryProposalExecutedEvents(
+  receiver: Contract,
+  provider: JsonRpcProvider,
+): Promise<ProposalExecutedEvent[]> {
+  const filter = receiver.filters.ProposalExecuted!();
+
+  const blockRanges = [
+    { from: 0, to: "latest" },
+  ];
+
+  let logs;
+  for (const range of blockRanges) {
+    try {
+      const toBlock = range.to === "latest" ? await provider.getBlockNumber() : range.to;
+      logs = await receiver.queryFilter(filter, range.from, toBlock);
+      break;
+    } catch {
+      continue;
+    }
+  }
+
+  if (!logs) {
+    try {
+      const latest = await provider.getBlockNumber();
+      const from = Math.max(0, latest - 500_000);
+      logs = await receiver.queryFilter(filter, from, latest);
+    } catch {
+      return [];
+    }
+  }
+
+  return logs.map((log) => {
+    const parsed = receiver.interface.parseLog({ topics: log.topics as string[], data: log.data });
+    if (!parsed) return null;
+    return {
+      id: Number(parsed.args[0]),
+      transactionHash: log.transactionHash,
+    };
+  }).filter((e): e is ProposalExecutedEvent => e !== null);
 }
 
 /**
@@ -183,6 +235,7 @@ async function processChain(
         status: receiverStateToStatus(state),
         l2ProposalId: match.id,
         eta: match.eta,
+        creationTxHash: match.transactionHash,
       });
     } catch (err) {
       results.push({
@@ -190,8 +243,23 @@ async function processChain(
         status: "not-transmitted",
         l2ProposalId: match.id,
         eta: match.eta,
+        creationTxHash: match.transactionHash,
         error: err instanceof Error ? err.message : String(err),
       });
+    }
+  }
+
+  // Enrich executed results with execution tx hashes
+  const hasExecuted = results.some((r) => r.status === "executed");
+  if (hasExecuted) {
+    const executedEvents = await queryProposalExecutedEvents(receiver, provider);
+    for (const result of results) {
+      if (result.status === "executed" && result.l2ProposalId !== undefined) {
+        const execEvent = executedEvents.find((e) => e.id === result.l2ProposalId);
+        if (execEvent) {
+          result.executionTxHash = execEvent.transactionHash;
+        }
+      }
     }
   }
 
