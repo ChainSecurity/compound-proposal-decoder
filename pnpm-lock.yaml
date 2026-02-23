@@ -162,6 +162,34 @@ importers:
         specifier: ^5.9.2
         version: 5.9.3
 
+  packages/tracker:
+    dependencies:
+      chalk:
+        specifier: ^5.6.2
+        version: 5.6.2
+      ethers:
+        specifier: ^6.15.0
+        version: 6.16.0
+      yargs:
+        specifier: ^18.0.0
+        version: 18.0.0
+    devDependencies:
+      '@types/node':
+        specifier: ^24.5.2
+        version: 24.10.9
+      '@types/yargs':
+        specifier: ^17.0.33
+        version: 17.0.35
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)
+      tsx:
+        specifier: ^4.20.5
+        version: 4.21.0
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
 packages:
 
   '@adraffy/ens-normalize@1.10.1':

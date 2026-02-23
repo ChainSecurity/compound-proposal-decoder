@@ -16,6 +16,7 @@
     "lint": { "dependsOn": ["^build"], "outputs": [] },
     "typecheck": { "dependsOn": ["^build"], "outputs": [] },
     "decode": { "cache": false },
+    "track": { "cache": false },
     "clean": { "cache": false },
     "test": {
       "dependsOn": ["build"],

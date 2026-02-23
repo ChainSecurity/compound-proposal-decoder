@@ -1,0 +1,75 @@
+/**
+ * Cross-chain proposal execution statuses
+ */
+export type CrossChainStatus =
+  | "not-transmitted"
+  | "pending"
+  | "executed"
+  | "expired";
+
+/**
+ * Governor Bravo proposal states (on-chain enum)
+ */
+export enum GovernorState {
+  Pending = 0,
+  Active = 1,
+  Canceled = 2,
+  Defeated = 3,
+  Succeeded = 4,
+  Queued = 5,
+  Expired = 6,
+  Executed = 7,
+}
+
+/**
+ * BaseBridgeReceiver proposal states (on-chain enum)
+ */
+export enum ReceiverState {
+  Queued = 0,
+  Expired = 1,
+  Executed = 2,
+}
+
+/**
+ * A single cross-chain bridge call extracted from the proposal
+ */
+export interface CrossChainAction {
+  actionIndex: number;
+  bridgeType: string;
+  chainName: string;
+  chainId: number;
+  receiverAddress: string;
+  innerTargets: string[];
+}
+
+/**
+ * Result of checking a single cross-chain action's L2 status
+ */
+export interface CrossChainActionResult {
+  action: CrossChainAction;
+  status: CrossChainStatus;
+  l2ProposalId?: number;
+  eta?: number;
+  creationTxHash?: string;
+  executionTxHash?: string;
+  error?: string;
+}
+
+/**
+ * Top-level tracking result for a proposal
+ */
+export interface TrackingResult {
+  proposalId: number;
+  governorState: GovernorState;
+  hasCrossChainActions: boolean;
+  actions: CrossChainActionResult[];
+  durationMs: number;
+}
+
+/**
+ * Batch tracking result for multiple proposals
+ */
+export interface BatchTrackingResult {
+  results: TrackingResult[];
+  totalDurationMs: number;
+}
