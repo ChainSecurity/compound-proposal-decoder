@@ -1,0 +1,31 @@
+{
+  "name": "@compound-security/tracker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": { "import": "./dist/tracker.js", "types": "./dist/tracker.d.ts" }
+  },
+  "scripts": {
+    "track": "tsx src/main.ts",
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "vitest run test/e2e",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "ethers": "^6.15.0",
+    "yargs": "^18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "@types/yargs": "^17.0.33",
+    "tsup": "^8.0.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}

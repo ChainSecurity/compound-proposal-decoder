@@ -9,6 +9,7 @@ A monorepo containing CLI tools for Compound governance proposal analysis and si
 | [`apps/portal`](./apps/portal/) | Web interface for decoding proposals |
 | [`packages/decoder`](./packages/decoder/) | Decode governance proposals into human-readable format |
 | [`packages/simulator`](./packages/simulator/) | Simulate proposals on Tenderly virtual testnets |
+| [`packages/tracker`](./packages/tracker/) | Track cross-chain proposal execution status on L2 chains |
 
 ## Quick Start
 
@@ -43,6 +44,10 @@ pnpm decode 527
 # Simulate a proposal (CLI)
 pnpm simulate 527
 
+# Track cross-chain execution status (CLI)
+pnpm track 528
+pnpm track 525-530
+
 # Run the web portal
 pnpm --filter @compound-security/portal dev
 ```
@@ -61,6 +66,7 @@ See the individual READMEs for detailed usage:
 - [Portal README](./apps/portal/README.md)
 - [Decoder README](./packages/decoder/README.md)
 - [Simulator README](./packages/simulator/README.md)
+- [Tracker README](./packages/tracker/README.md)
 
 ## Development
 
