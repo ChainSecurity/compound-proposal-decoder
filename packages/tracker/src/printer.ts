@@ -38,7 +38,7 @@ export function prettyPrint(result: TrackingResult): void {
     return;
   }
 
-  const govStateName = GOVERNOR_STATE_NAMES[result.governorState] ?? "Unknown";
+  const govStateName = (result.governorState !== undefined ? GOVERNOR_STATE_NAMES[result.governorState] : undefined) ?? "Unknown";
   console.log(chalk.bold(`Proposal ${result.proposalId}`) + `  —  Governor: ${govStateName}`);
   console.log();
 

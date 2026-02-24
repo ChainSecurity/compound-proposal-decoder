@@ -87,7 +87,6 @@ async function trackSingle(
       proposalId,
       notFound: isRevert,
       error: isRevert ? undefined : message,
-      governorState: GovernorState.Pending,
       hasCrossChainActions: false,
       actions: [],
       durationMs: Date.now() - start,
@@ -189,7 +188,6 @@ export async function trackProposals(proposalIds: number[]): Promise<BatchTracki
       results.push({
         proposalId: id,
         error: message,
-        governorState: GovernorState.Pending,
         hasCrossChainActions: false,
         actions: [],
         durationMs: 0,

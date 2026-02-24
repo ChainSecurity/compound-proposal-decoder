@@ -70,7 +70,8 @@ export interface TrackingResult {
   notFound?: boolean;
   /** Error message for unexpected failures */
   error?: string;
-  governorState: GovernorState;
+  /** Undefined when notFound or error */
+  governorState?: GovernorState;
   hasCrossChainActions: boolean;
   actions: CrossChainActionResult[];
   /** L1 execution transaction hash (only present when the proposal has been executed on mainnet) */

@@ -55,11 +55,13 @@ function getTxUrl(chainId: number, txHash: string): string | undefined {
 }
 
 // --- Governor state helpers ---
-function governorStateLabel(state: GovernorState): string {
+function governorStateLabel(state: GovernorState | undefined): string {
+  if (state === undefined) return "Unknown";
   return GovernorState[state] ?? `State ${state}`;
 }
 
-function governorStateColor(state: GovernorState): string {
+function governorStateColor(state: GovernorState | undefined): string {
+  if (state === undefined) return "text-slate-500 bg-slate-50 border-slate-200";
   switch (state) {
     case GovernorState.Executed:
       return "text-emerald-700 bg-emerald-50 border-emerald-200";
@@ -252,6 +254,37 @@ function ResultsView({ result, onReset }: { result: TrackingResult; onReset: () 
   const notTransmittedCount = result.actions.filter((a) => a.status === "not-transmitted").length;
   const expiredCount = result.actions.filter((a) => a.status === "expired").length;
 
+  if (result.notFound || result.error) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <main className="max-w-4xl mx-auto px-6 lg:px-12 py-12">
+          <div className="flex items-center gap-6 mb-10">
+            <button
+              onClick={onReset}
+              className="flex items-center gap-2 text-slate-500 hover:text-slate-900 transition-colors"
+              title="Press Esc"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="text-sm">Back</span>
+            </button>
+            <div className="h-5 w-px bg-slate-300" />
+            <h1 className="text-2xl font-semibold text-slate-900">Proposal #{result.proposalId}</h1>
+          </div>
+          <div className="bg-white rounded-xl border border-amber-200 p-8 text-center">
+            <div className="text-amber-600 font-semibold text-lg mb-2">
+              {result.notFound ? "Proposal not found" : "Error"}
+            </div>
+            <div className="text-slate-500 text-sm">
+              {result.notFound
+                ? `Proposal #${result.proposalId} does not exist on-chain.`
+                : result.error}
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <main className="max-w-4xl mx-auto px-6 lg:px-12 py-12">
@@ -376,8 +409,9 @@ function BatchResultsView({ result, onReset }: { result: BatchTrackingResult; on
     });
   };
 
+  const invalidResults = result.results.filter((r) => r.notFound || r.error);
   const crossChainResults = result.results.filter((r) => r.hasCrossChainActions);
-  const noCrossChainResults = result.results.filter((r) => !r.hasCrossChainActions);
+  const noCrossChainResults = result.results.filter((r) => !r.hasCrossChainActions && !r.notFound && !r.error);
 
   const allIds = result.results.map((r) => r.proposalId);
   const minId = Math.min(...allIds);
@@ -488,6 +522,29 @@ function BatchResultsView({ result, onReset }: { result: BatchTrackingResult; on
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Not found / error proposals */}
+        {invalidResults.length > 0 && (
+          <div className="mb-6">
+            <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wide mb-3">
+              Not found ({invalidResults.length})
+            </h2>
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <div className="flex flex-wrap gap-2">
+                {invalidResults.map((r) => (
+                  <div
+                    key={r.proposalId}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 rounded-lg border border-amber-100"
+                    title={r.error ?? "Proposal does not exist on-chain"}
+                  >
+                    <span className="text-sm font-medium text-slate-700">#{r.proposalId}</span>
+                    <span className="text-xs text-amber-600">{r.notFound ? "not found" : "error"}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
