@@ -69,6 +69,8 @@ export interface TrackingResult {
   governorState: GovernorState;
   hasCrossChainActions: boolean;
   actions: CrossChainActionResult[];
+  /** L1 execution transaction hash (only present when the proposal has been executed on mainnet) */
+  l1ExecutionTxHash?: string;
   durationMs: number;
 }
 

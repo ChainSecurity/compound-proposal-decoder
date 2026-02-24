@@ -120,6 +120,7 @@ async function trackSingle(
     governorState,
     hasCrossChainActions,
     actions: results,
+    l1ExecutionTxHash: executionTxHash,
     durationMs: Date.now() - start,
   };
 }

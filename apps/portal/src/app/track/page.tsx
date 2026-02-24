@@ -180,19 +180,6 @@ function ActionStatusCard({ result }: { result: CrossChainActionResult }) {
           </div>
         )}
 
-        {action.innerTargets.length > 0 && (
-          <div className="flex items-start gap-2">
-            <span className="text-slate-500 w-28 shrink-0 pt-0.5">Targets</span>
-            <div className="space-y-1">
-              {action.innerTargets.map((t, i) => (
-                <div key={i} className="font-mono text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded">
-                  {t}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {creationTxHash && (
           <div className="flex items-center gap-2">
             <span className="text-slate-500 w-28 shrink-0">Bridge tx</span>
@@ -314,6 +301,22 @@ function ResultsView({ result, onReset }: { result: TrackingResult; onReset: () 
           )}
         </div>
 
+        {/* L1 execution tx */}
+        {result.l1ExecutionTxHash && (
+          <div className="bg-white rounded-xl border border-slate-200 px-5 py-3 mb-8 flex items-center gap-3 text-sm">
+            <span className="text-slate-500 shrink-0">L1 execution tx</span>
+            <a
+              href={`https://etherscan.io/tx/${result.l1ExecutionTxHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline"
+            >
+              {result.l1ExecutionTxHash.slice(0, 10)}…{result.l1ExecutionTxHash.slice(-6)}
+              <ArrowUpRight className="w-3 h-3" />
+            </a>
+          </div>
+        )}
+
         {/* Cross-chain actions */}
         {result.hasCrossChainActions ? (
           <div className="space-y-3">
@@ -431,22 +434,29 @@ function BatchResultsView({ result, onReset }: { result: BatchTrackingResult; on
             <div className="space-y-2">
               {crossChainResults.map((r) => {
                 const isExpanded = expanded.has(r.proposalId);
-                const executedCount = r.actions.filter((a) => a.status === "executed").length;
                 return (
                   <div key={r.proposalId} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                     <button
-                      className="w-full flex items-center gap-4 px-5 py-4 hover:bg-slate-50 transition-colors text-left"
+                      className="w-full flex items-center gap-3 px-5 py-4 hover:bg-slate-50 transition-colors text-left"
                       onClick={() => toggleExpand(r.proposalId)}
                     >
                       <span className="font-semibold text-slate-900 w-16 shrink-0">#{r.proposalId}</span>
                       <div
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${governorStateColor(r.governorState)}`}
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border shrink-0 ${governorStateColor(r.governorState)}`}
                       >
                         {governorStateLabel(r.governorState)}
                       </div>
-                      <span className="text-sm text-slate-500 ml-2">
-                        {r.actions.length} action{r.actions.length !== 1 ? "s" : ""} · {executedCount}/{r.actions.length} executed
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {r.actions.map((a, idx) => (
+                          <span
+                            key={idx}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${statusBadgeColor(a.status)}`}
+                          >
+                            {statusIcon(a.status)}
+                            {capitalize(a.action.chainName)}
+                          </span>
+                        ))}
+                      </div>
                       <div className="flex-1" />
                       {isExpanded ? (
                         <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
@@ -456,6 +466,20 @@ function BatchResultsView({ result, onReset }: { result: BatchTrackingResult; on
                     </button>
                     {isExpanded && (
                       <div className="border-t border-slate-100 p-4 space-y-3 bg-slate-50">
+                        {r.l1ExecutionTxHash && (
+                          <div className="flex items-center gap-3 text-sm px-1">
+                            <span className="text-slate-500 shrink-0">L1 execution tx</span>
+                            <a
+                              href={`https://etherscan.io/tx/${r.l1ExecutionTxHash}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                            >
+                              {r.l1ExecutionTxHash.slice(0, 10)}…{r.l1ExecutionTxHash.slice(-6)}
+                              <ArrowUpRight className="w-3 h-3" />
+                            </a>
+                          </div>
+                        )}
                         {r.actions.map((actionResult, idx) => (
                           <ActionStatusCard key={idx} result={actionResult} />
                         ))}
