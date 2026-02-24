@@ -73,10 +73,26 @@ async function trackSingle(
   const start = Date.now();
 
   // Fetch governor state and proposal details in parallel
-  const [stateResult, detailsResult] = await Promise.all([
-    governor.state(proposalId) as Promise<bigint>,
-    governor.proposalDetails(proposalId) as Promise<[string[], bigint[], string[], string]>,
-  ]);
+  let stateResult: bigint;
+  let detailsResult: [string[], bigint[], string[], string];
+  try {
+    [stateResult, detailsResult] = await Promise.all([
+      governor.state(proposalId) as Promise<bigint>,
+      governor.proposalDetails(proposalId) as Promise<[string[], bigint[], string[], string]>,
+    ]);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const isRevert = message.includes("execution reverted") || message.includes("CALL_EXCEPTION");
+    return {
+      proposalId,
+      notFound: isRevert,
+      error: isRevert ? undefined : message,
+      governorState: GovernorState.Pending,
+      hasCrossChainActions: false,
+      actions: [],
+      durationMs: Date.now() - start,
+    };
+  }
 
   const governorState = Number(stateResult) as GovernorState;
   // proposalDetails returns (address[] targets, uint256[] values, bytes[] calldatas, bytes32 descriptionHash)
@@ -165,8 +181,20 @@ export async function trackProposals(proposalIds: number[]): Promise<BatchTracki
 
   const results: TrackingResult[] = [];
   for (const id of proposalIds) {
-    const result = await trackSingle(id, governor, provider);
-    results.push(result);
+    try {
+      const result = await trackSingle(id, governor, provider);
+      results.push(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      results.push({
+        proposalId: id,
+        error: message,
+        governorState: GovernorState.Pending,
+        hasCrossChainActions: false,
+        actions: [],
+        durationMs: 0,
+      });
+    }
   }
 
   return {

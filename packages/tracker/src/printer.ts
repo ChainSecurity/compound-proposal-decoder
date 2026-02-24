@@ -22,9 +22,23 @@ const GOVERNOR_STATE_NAMES: Record<number, string> = {
 };
 
 export function prettyPrint(result: TrackingResult): void {
-  const govStateName = GOVERNOR_STATE_NAMES[result.governorState] ?? "Unknown";
-
   console.log();
+
+  if (result.notFound) {
+    console.log(chalk.bold(`Proposal ${result.proposalId}`) + `  —  ` + chalk.yellow("Not found"));
+    console.log(chalk.dim("  Proposal does not exist on-chain."));
+    console.log(chalk.dim(`  Completed in ${result.durationMs}ms`));
+    return;
+  }
+
+  if (result.error) {
+    console.log(chalk.bold(`Proposal ${result.proposalId}`) + `  —  ` + chalk.red("Error"));
+    console.log(chalk.red(`  ${result.error}`));
+    console.log(chalk.dim(`  Completed in ${result.durationMs}ms`));
+    return;
+  }
+
+  const govStateName = GOVERNOR_STATE_NAMES[result.governorState] ?? "Unknown";
   console.log(chalk.bold(`Proposal ${result.proposalId}`) + `  —  Governor: ${govStateName}`);
   console.log();
 
@@ -116,9 +130,15 @@ export function prettyPrintBatch(batch: BatchTrackingResult): void {
       }
     }
 
+    const notFoundCount = batch.results.filter((r) => r.notFound).length;
+    const errorCount = batch.results.filter((r) => r.error && !r.notFound).length;
+
     console.log();
     console.log(chalk.bold("── Batch Summary ──"));
-    console.log(`  ${batch.results.length} proposals, ${totalActions} cross-chain actions`);
+    let proposalSummary = `  ${batch.results.length} proposals, ${totalActions} cross-chain actions`;
+    if (notFoundCount > 0) proposalSummary += chalk.yellow(` (${notFoundCount} not found)`);
+    if (errorCount > 0) proposalSummary += chalk.red(` (${errorCount} errors)`);
+    console.log(proposalSummary);
 
     if (totalActions > 0) {
       const parts = Object.entries(counts).map(([status, count]) => {

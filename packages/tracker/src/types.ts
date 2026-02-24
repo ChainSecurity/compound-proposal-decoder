@@ -66,6 +66,10 @@ export interface CrossChainActionResult {
  */
 export interface TrackingResult {
   proposalId: number;
+  /** True when the proposal ID does not exist on-chain */
+  notFound?: boolean;
+  /** Error message for unexpected failures */
+  error?: string;
   governorState: GovernorState;
   hasCrossChainActions: boolean;
   actions: CrossChainActionResult[];
