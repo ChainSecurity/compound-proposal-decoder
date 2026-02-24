@@ -38,8 +38,14 @@ export interface CrossChainAction {
   bridgeType: string;
   chainName: string;
   chainId: number;
+  /** L1 bridge contract address — used to find bridge events in the execution tx */
+  bridgeAddress: string;
   receiverAddress: string;
   innerTargets: string[];
+  /** Inner proposal values (decimal strings to avoid BigInt serialisation issues) */
+  innerValues: string[];
+  /** Inner proposal calldatas */
+  innerCalldatas: string[];
 }
 
 /**

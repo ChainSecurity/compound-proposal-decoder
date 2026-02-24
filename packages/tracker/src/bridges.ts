@@ -64,7 +64,7 @@ const coder = AbiCoder.defaultAbiCoder();
 
 /**
  * Detect if a proposal action targets a known bridge contract.
- * If so, decode the calldata and extract the inner cross-chain targets.
+ * If so, decode the calldata and extract the inner cross-chain payload.
  *
  * Returns null if the target is not a bridge contract.
  */
@@ -79,7 +79,7 @@ export function detectBridgeAction(
   );
   if (!entry) return null;
 
-  const [, bridge] = entry;
+  const [bridgeAddress, bridge] = entry;
   let { chainName } = bridge;
   const { bridgeType } = bridge;
 
@@ -107,6 +107,8 @@ export function detectBridgeAction(
     // Decode inner payload: (address[] targets, uint256[] values, string[] sigs, bytes[] calldatas)
     const decoded = coder.decode(TUPLE_TYPES, innerPayload);
     const innerTargets = Array.from(decoded[0] as string[]);
+    const innerValues = Array.from(decoded[1] as bigint[]).map((v) => v.toString());
+    const innerCalldatas = Array.from(decoded[3] as string[]);
 
     // Look up chain ID and receiver from config
     const config = loadConfig();
@@ -119,8 +121,11 @@ export function detectBridgeAction(
       bridgeType,
       chainName,
       chainId,
+      bridgeAddress: bridgeAddress!,
       receiverAddress,
       innerTargets,
+      innerValues,
+      innerCalldatas,
     };
   } catch {
     // Failed to decode — not a recognized bridge call pattern

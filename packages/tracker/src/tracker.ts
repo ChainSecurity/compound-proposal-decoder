@@ -32,11 +32,43 @@ export {
 } from "./types.js";
 
 /**
+ * Query the execution tx hash for a proposal via the ProposalExecuted event.
+ * Returns undefined if the event cannot be found.
+ */
+async function getExecutionTxHash(
+  governor: Contract,
+  provider: JsonRpcProvider,
+  proposalId: number,
+): Promise<string | undefined> {
+  try {
+    // ProposalExecuted(uint256 id) — id is NOT indexed, so we cannot filter by
+    // value; fetch all events and find the matching one by parsing the log data.
+    const filter = governor.filters.ProposalExecuted!();
+    const latest = await provider.getBlockNumber();
+    let logs;
+    try {
+      logs = await governor.queryFilter(filter, 0, latest);
+    } catch {
+      const from = Math.max(0, latest - 500_000);
+      logs = await governor.queryFilter(filter, from, latest);
+    }
+    const match = logs.find((log) => {
+      const parsed = governor.interface.parseLog({ topics: log.topics as string[], data: log.data });
+      return parsed && Number(parsed.args[0]) === proposalId;
+    });
+    return match?.transactionHash;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Internal: track a single proposal using the given provider and governor contract.
  */
 async function trackSingle(
   proposalId: number,
   governor: Contract,
+  provider: JsonRpcProvider,
 ): Promise<TrackingResult> {
   const start = Date.now();
 
@@ -76,8 +108,12 @@ async function trackSingle(
     };
   }
 
-  // Proposal is executed on mainnet — check L2 statuses
-  const results = await checkL2StatusBatch(actions);
+  // Proposal is executed on mainnet — get the execution tx hash to enable
+  // precise bridge-message based matching on L2
+  const executionTxHash = await getExecutionTxHash(governor, provider, proposalId);
+
+  // Check L2 statuses, using the execution tx hash for bridge-message matching
+  const results = await checkL2StatusBatch(actions, provider, executionTxHash);
 
   return {
     proposalId,
@@ -107,12 +143,13 @@ function createGovernorContract(): { provider: JsonRpcProvider; governor: Contra
  *
  * 1. Reads governor state and proposal details from mainnet
  * 2. Detects bridge calls among the proposal actions
- * 3. If the proposal has been executed on mainnet, queries L2 receivers
+ * 3. If the proposal has been executed on mainnet, looks up the execution tx
+ *    to find the bridge message, then verifies the corresponding L2 proposal
  * 4. Returns status for each cross-chain action
  */
 export async function trackProposal(proposalId: number): Promise<TrackingResult> {
-  const { governor } = createGovernorContract();
-  return trackSingle(proposalId, governor);
+  const { provider, governor } = createGovernorContract();
+  return trackSingle(proposalId, governor, provider);
 }
 
 /**
@@ -123,11 +160,11 @@ export async function trackProposal(proposalId: number): Promise<TrackingResult>
  */
 export async function trackProposals(proposalIds: number[]): Promise<BatchTrackingResult> {
   const totalStart = Date.now();
-  const { governor } = createGovernorContract();
+  const { provider, governor } = createGovernorContract();
 
   const results: TrackingResult[] = [];
   for (const id of proposalIds) {
-    const result = await trackSingle(id, governor);
+    const result = await trackSingle(id, governor, provider);
     results.push(result);
   }
 
