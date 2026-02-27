@@ -214,14 +214,14 @@ export function ActionCard({ node, index, total, edge, depth = 0, id, defaultExp
   };
 
   return (
-    <div id={id} data-testid={id} className={`rounded-2xl border overflow-hidden transition-colors ${
+    <div id={id} data-testid={id} className={`rounded-2xl border transition-colors ${
       reviewed
-        ? "bg-emerald-50/30 border-emerald-200"
-        : "bg-white border-slate-200"
+        ? "border-emerald-200"
+        : "border-slate-200"
     }`}>
       {/* Header */}
       <div
-        className="p-6 cursor-pointer hover:bg-slate-50 transition-colors"
+        className={`p-6 cursor-pointer transition-colors ${isOpen ? "rounded-t-2xl" : "rounded-2xl"} sticky top-14 z-10 ${reviewed ? "bg-emerald-50/30 hover:bg-emerald-100/40" : "bg-white hover:bg-slate-50"}`}
         onClick={() => setIsOpen(!isOpen)}
       >
         <div className="flex items-start gap-4">
@@ -338,7 +338,7 @@ export function ActionCard({ node, index, total, edge, depth = 0, id, defaultExp
 
       {/* Expanded Content */}
       {isOpen && (
-        <div className="border-t border-slate-100">
+        <div className={`border-t rounded-b-2xl ${reviewed ? "border-emerald-100 bg-emerald-50/30" : "border-slate-100 bg-white"}`}>
           <div className="p-6 space-y-8">
             {/* Implementation */}
             {node.implementation && (
