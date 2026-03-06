@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Globe, Fuel, ExternalLink } from "lucide-react";
+import { ChevronDown, ChevronRight, Globe, Fuel, ExternalLink, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { TransactionExecution } from "./transaction-execution";
 import { RevertButton } from "./revert-button";
@@ -13,10 +13,18 @@ interface ChainResultCardProps {
   defaultExpanded?: boolean;
 }
 
+/** 2^24 = 16,777,216 — transactions exceeding this on Ethereum are dangerously large */
+const ETHEREUM_GAS_ALERT_THRESHOLD = 2 ** 24;
+
 function formatGas(gas: string | undefined): string {
   if (!gas) return "N/A";
   const num = BigInt(gas);
   return num.toLocaleString();
+}
+
+function exceedsGasThreshold(gas: string | undefined): boolean {
+  if (!gas) return false;
+  return BigInt(gas) > BigInt(ETHEREUM_GAS_ALERT_THRESHOLD);
 }
 
 function truncateAddress(address: string): string {
@@ -169,6 +177,25 @@ export function ChainResultCard({ result, defaultExpanded = true }: ChainResultC
             {revertMessage.text}
           </div>
         )}
+
+        {/* High gas alert for Ethereum */}
+        {result.chainId === 1 && exceedsGasThreshold(result.totalGasUsed) && (
+          <div
+            className="mt-4 flex items-start gap-3 p-4 bg-red-50 border-2 border-red-300 rounded-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <AlertTriangle className="w-6 h-6 text-red-600 shrink-0 mt-0.5" />
+            <div>
+              <div className="text-base font-bold text-red-700">
+                Gas exceeds 2^24 ({ETHEREUM_GAS_ALERT_THRESHOLD.toLocaleString()})
+              </div>
+              <div className="text-sm text-red-600 mt-1">
+                This proposal uses {formatGas(result.totalGasUsed)} gas on Ethereum, which exceeds 2^24.
+                This may be too large to execute in a single block and could fail on-chain.
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Expanded content */}
@@ -190,7 +217,7 @@ export function ChainResultCard({ result, defaultExpanded = true }: ChainResultC
             </div>
             <div className="space-y-3">
               {result.executions.map((tx) => (
-                <TransactionExecution key={tx.index} tx={tx} />
+                <TransactionExecution key={tx.index} tx={tx} chainId={result.chainId} />
               ))}
             </div>
           </div>
