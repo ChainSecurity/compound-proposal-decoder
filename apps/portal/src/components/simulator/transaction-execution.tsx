@@ -4,6 +4,9 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight, CheckCircle, XCircle, ExternalLink, Copy, Check, Fuel, AlertTriangle } from "lucide-react";
 import type { SerializedTransactionExecution } from "@/types/simulator";
 
+/** 14,000,000 — getting close to block gas limits */
+const ETHEREUM_GAS_WARNING_THRESHOLD = 14_000_000;
+
 /** 2^24 = 16,777,216 */
 const ETHEREUM_GAS_ALERT_THRESHOLD = 2 ** 24;
 
@@ -81,6 +84,12 @@ export function TransactionExecution({ tx, chainId }: TransactionExecutionProps)
               <span className="flex items-center gap-1 text-red-600 font-semibold" title="Gas exceeds 2^24 — may be too large for a single block">
                 <AlertTriangle className="w-3.5 h-3.5" />
                 &gt; 2^24
+              </span>
+            )}
+            {chainId === 1 && BigInt(tx.gasUsed) > BigInt(ETHEREUM_GAS_WARNING_THRESHOLD) && BigInt(tx.gasUsed) <= BigInt(ETHEREUM_GAS_ALERT_THRESHOLD) && (
+              <span className="flex items-center gap-1 text-amber-600 font-semibold" title="Gas exceeds 14M — getting close to block gas limits">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                &gt; 14M
               </span>
             )}
           </div>

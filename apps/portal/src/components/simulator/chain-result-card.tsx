@@ -13,6 +13,9 @@ interface ChainResultCardProps {
   defaultExpanded?: boolean;
 }
 
+/** 14,000,000 — transactions exceeding this on Ethereum are getting close to block limits */
+const ETHEREUM_GAS_WARNING_THRESHOLD = 14_000_000;
+
 /** 2^24 = 16,777,216 — transactions exceeding this on Ethereum are dangerously large */
 const ETHEREUM_GAS_ALERT_THRESHOLD = 2 ** 24;
 
@@ -20,6 +23,11 @@ function formatGas(gas: string | undefined): string {
   if (!gas) return "N/A";
   const num = BigInt(gas);
   return num.toLocaleString();
+}
+
+function exceedsGasWarning(gas: string | undefined): boolean {
+  if (!gas) return false;
+  return BigInt(gas) > BigInt(ETHEREUM_GAS_WARNING_THRESHOLD);
 }
 
 function exceedsGasThreshold(gas: string | undefined): boolean {
@@ -178,7 +186,25 @@ export function ChainResultCard({ result, defaultExpanded = true }: ChainResultC
           </div>
         )}
 
-        {/* High gas alert for Ethereum */}
+        {/* High gas warning for Ethereum (> 14M) */}
+        {result.chainId === 1 && exceedsGasWarning(result.totalGasUsed) && !exceedsGasThreshold(result.totalGasUsed) && (
+          <div
+            className="mt-4 flex items-start gap-3 p-4 bg-amber-50 border-2 border-amber-300 rounded-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <div className="text-base font-bold text-amber-700">
+                Gas exceeds 14M ({ETHEREUM_GAS_WARNING_THRESHOLD.toLocaleString()})
+              </div>
+              <div className="text-sm text-amber-600 mt-1">
+                This proposal uses {formatGas(result.totalGasUsed)} gas on Ethereum, which is getting close to block gas limits.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* High gas alert for Ethereum (> 2^24) */}
         {result.chainId === 1 && exceedsGasThreshold(result.totalGasUsed) && (
           <div
             className="mt-4 flex items-start gap-3 p-4 bg-red-50 border-2 border-red-300 rounded-xl"
