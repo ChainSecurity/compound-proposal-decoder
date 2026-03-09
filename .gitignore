@@ -21,6 +21,9 @@ out
 # Config with secrets (use compound-config.json.example as template)
 compound-config.json
 
+# Auto-managed Tenderly virtual testnet URLs
+.tenderly-testnets.json
+
 # Logs
 *.log
 npm-debug.log*

@@ -10,9 +10,11 @@ import type { SimulateRequest } from "@/types/simulator";
 interface SimulatorFormProps {
   onSubmit: (request: SimulateRequest) => void;
   isLoading?: boolean;
+  refreshTestnets: boolean;
+  onRefreshTestnetsChange: (value: boolean) => void;
 }
 
-export function SimulatorForm({ onSubmit, isLoading }: SimulatorFormProps) {
+export function SimulatorForm({ onSubmit, isLoading, refreshTestnets, onRefreshTestnetsChange }: SimulatorFormProps) {
   const [activeTab, setActiveTab] = React.useState("id");
   const [proposalId, setProposalId] = React.useState("");
   const [calldata, setCalldata] = React.useState("");
@@ -34,7 +36,7 @@ export function SimulatorForm({ onSubmit, isLoading }: SimulatorFormProps) {
           setError("Please enter a valid proposal ID (non-negative integer)");
           return;
         }
-        onSubmit({ type: "id", proposalId: id, mode, backend });
+        onSubmit({ type: "id", proposalId: id, mode, backend, refreshTestnets });
         break;
       }
       case "calldata": {
@@ -51,7 +53,7 @@ export function SimulatorForm({ onSubmit, isLoading }: SimulatorFormProps) {
           setError("Calldata must contain only hexadecimal characters");
           return;
         }
-        onSubmit({ type: "calldata", calldata: trimmed, mode, backend });
+        onSubmit({ type: "calldata", calldata: trimmed, mode, backend, refreshTestnets });
         break;
       }
       case "json": {
@@ -71,6 +73,7 @@ export function SimulatorForm({ onSubmit, isLoading }: SimulatorFormProps) {
             },
             mode,
             backend,
+            refreshTestnets,
           });
         } catch {
           setError("Invalid JSON format");
@@ -178,6 +181,35 @@ export function SimulatorForm({ onSubmit, isLoading }: SimulatorFormProps) {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Refresh Testnets Toggle */}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={refreshTestnets}
+          onClick={() => onRefreshTestnetsChange(!refreshTestnets)}
+          disabled={isLoading}
+          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+            refreshTestnets ? "bg-slate-900" : "bg-slate-200"
+          }`}
+          data-testid="refresh-testnets-toggle"
+        >
+          <span
+            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+              refreshTestnets ? "translate-x-5" : "translate-x-0"
+            }`}
+          />
+        </button>
+        <div>
+          <label className="text-sm font-medium text-slate-700 cursor-pointer" onClick={() => onRefreshTestnetsChange(!refreshTestnets)}>
+            Refresh Tenderly testnets
+          </label>
+          <p className="text-xs text-slate-500">
+            Delete and recreate virtual testnets for a clean state before simulation
+          </p>
+        </div>
+      </div>
 
       {/* Error */}
       {error && (

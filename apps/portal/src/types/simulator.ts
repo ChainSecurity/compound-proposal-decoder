@@ -47,6 +47,7 @@ export type SimulateRequestById = {
   proposalId: number;
   mode?: SimulationMode;
   backend?: BackendType;
+  refreshTestnets?: boolean;
 };
 
 export type SimulateRequestByCalldata = {
@@ -54,6 +55,7 @@ export type SimulateRequestByCalldata = {
   calldata: string;
   mode?: SimulationMode;
   backend?: BackendType;
+  refreshTestnets?: boolean;
 };
 
 export type SimulateRequestByDetails = {
@@ -66,6 +68,7 @@ export type SimulateRequestByDetails = {
   };
   mode?: SimulationMode;
   backend?: BackendType;
+  refreshTestnets?: boolean;
 };
 
 export type SimulateRequest =
@@ -77,19 +80,3 @@ export type SimulateResponse =
   | { success: true; data: SerializedSimulationResult }
   | { success: false; error: string };
 
-// Revert types
-export type RevertRequest =
-  | { type: "single"; chain: string; snapshot?: string }
-  | { type: "multiple"; chains: string[]; snapshot?: string }
-  | { type: "all"; snapshot?: string };
-
-export type RevertResultItem = {
-  chain: string;
-  success: boolean;
-  snapshotId?: string;
-  error?: string;
-};
-
-export type RevertResponse =
-  | { success: true; data: RevertResultItem[] }
-  | { success: false; error: string };

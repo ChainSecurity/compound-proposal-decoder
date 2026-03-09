@@ -16,7 +16,8 @@ import type {
     MineBlockOptions,
     BackendInitOptions,
 } from "./types";
-import { loadConfig, getSimulatorRpcUrl } from "../config";
+import { getSimulatorRpcUrl, getTenderlyApiConfig } from "../config";
+import { refreshVirtualTestnet } from "../tenderly-api";
 
 export class TenderlyBackend implements Backend {
     readonly name: BackendType = "tenderly";
@@ -25,12 +26,23 @@ export class TenderlyBackend implements Backend {
     private impersonatedAccounts: Map<string, Set<string>> = new Map();
 
     async initialize(chains: string[], _options?: BackendInitOptions): Promise<void> {
-        const config = loadConfig();
-
         for (const chain of chains) {
-            const rpcUrl = getSimulatorRpcUrl(chain);
+            let rpcUrl = getSimulatorRpcUrl(chain);
+
+            // Auto-create a testnet if none exists for this chain
             if (!rpcUrl) {
-                throw new Error(`No simulatorRpcUrl configured for chain: ${chain}`);
+                const apiConfig = getTenderlyApiConfig();
+                if (!apiConfig) {
+                    throw new Error(
+                        `No testnet URL for chain "${chain}" and Tenderly API not configured. ` +
+                        `Set tenderlyAccessToken, tenderlyAccount, and tenderlyProject in compound-config.json`
+                    );
+                }
+                const result = await refreshVirtualTestnet(chain);
+                if (!result.success || !result.newRpcUrl) {
+                    throw new Error(`Failed to create testnet for chain "${chain}": ${result.error}`);
+                }
+                rpcUrl = result.newRpcUrl;
             }
 
             const provider = new ethers.JsonRpcProvider(rpcUrl);

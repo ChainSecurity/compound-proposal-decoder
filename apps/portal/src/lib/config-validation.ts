@@ -64,25 +64,6 @@ export function validateChainConfig(
     );
   }
 
-  // Optional but important: simulatorRpcUrl
-  if (!chain.simulatorRpcUrl) {
-    addWarning(
-      warnings,
-      "info",
-      "simulatorRpcUrl",
-      "Simulator RPC URL not configured - simulation unavailable for this chain",
-      chainName
-    );
-  } else if (isPlaceholder(chain.simulatorRpcUrl)) {
-    addWarning(
-      warnings,
-      "warning",
-      "simulatorRpcUrl",
-      "Simulator RPC URL contains placeholder value",
-      chainName
-    );
-  }
-
   return warnings;
 }
 
@@ -138,11 +119,9 @@ export function getChainStatus(
   chain: ChainConfig
 ): "configured" | "partial" | "not-configured" {
   const hasRpc = chain.rpcUrl && !isPlaceholder(chain.rpcUrl);
-  const hasSimulator =
-    chain.simulatorRpcUrl && !isPlaceholder(chain.simulatorRpcUrl);
   const hasTimelock = !!chain.timelockAddress;
 
-  if (hasRpc && hasSimulator && hasTimelock) {
+  if (hasRpc && hasTimelock) {
     return "configured";
   } else if (hasRpc || hasTimelock) {
     return "partial";

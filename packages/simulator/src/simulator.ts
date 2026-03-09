@@ -27,10 +27,9 @@ import type {
     ChainExecutionResult,
     SimulationResult,
     Config,
-    RevertResult,
     BackendType,
 } from "./types";
-import { loadConfig, clearConfigCache } from "./config";
+import { loadConfig, clearConfigCache, getTenderlyApiConfig } from "./config";
 import { createBackend } from "./backends";
 import type { SimulationContext, Logger } from "./core/types";
 import { nullLogger } from "./core/types";
@@ -38,13 +37,12 @@ import {
     getProposal,
     detectL2Chains,
     parseProposalCalldata,
-    resolveSnapshotId,
-    createSnapshot,
     setupDelegation,
     runGovernanceFlow,
     simulateBridging,
     runDirectWithL2,
 } from "./core";
+import { refreshVirtualTestnets, type RefreshResult } from "./tenderly-api";
 
 // Re-export types for library consumers
 export type {
@@ -53,9 +51,10 @@ export type {
     TransactionExecution,
     SimulationResult,
     Config,
-    RevertResult,
     BackendType,
 } from "./types";
+
+export { refreshVirtualTestnets, refreshVirtualTestnet, type RefreshResult } from "./tenderly-api";
 
 export type {
     SerializedTransactionExecution,
@@ -96,23 +95,41 @@ interface SimulationInit {
     startTime: number;
 }
 
+interface InitializeSimulationOptions {
+    refreshTestnets?: boolean;
+}
+
 /**
- * Initialize simulation: create backend, context, snapshot, and setup delegation
+ * Initialize simulation: create backend, context, and setup delegation
  */
 async function initializeSimulation(
     proposal: Proposal,
     backendType: BackendType,
-    logger: Logger = nullLogger
+    logger: Logger = nullLogger,
+    options?: InitializeSimulationOptions
 ): Promise<SimulationInit> {
     const startedAt = new Date().toISOString();
     const startTime = Date.now();
 
     // Detect L2 chains from proposal
     const l2Chains = detectL2Chains(proposal);
+    const chainsToInitialize = ["mainnet", ...l2Chains];
+
+    // Refresh Tenderly virtual testnets if requested (default: true for Tenderly backend)
+    // This deletes old testnets and creates fresh ones for all chains.
+    // If a chain doesn't have a testnet yet, one is created automatically.
+    const shouldRefresh = backendType === "tenderly" && (options?.refreshTestnets ?? true);
+    if (shouldRefresh) {
+        const apiConfig = getTenderlyApiConfig();
+        if (apiConfig) {
+            await refreshVirtualTestnets(chainsToInitialize, logger);
+        } else {
+            logger.warn("Tenderly API not configured — skipping testnet refresh. Set tenderlyAccessToken, tenderlyAccount, and tenderlyProject in compound-config.json");
+        }
+    }
 
     // Create and initialize backend with mainnet + any L2 chains
     const backend = createBackend(backendType);
-    const chainsToInitialize = ["mainnet", ...l2Chains];
     await backend.initialize(chainsToInitialize);
 
     // Create simulation context with provided logger
@@ -120,9 +137,6 @@ async function initializeSimulation(
         backend,
         logger,
     };
-
-    // Create snapshot before any state changes
-    await createSnapshot("mainnet", backend, logger);
 
     // Setup delegation for voting power
     await setupDelegation(ctx);
@@ -170,9 +184,10 @@ async function simulateFromProposal(
     proposalId: string | undefined,
     mode: SimulationMode,
     backendType: BackendType,
-    logger: Logger = nullLogger
+    logger: Logger = nullLogger,
+    options?: { refreshTestnets?: boolean }
 ): Promise<SimulationResult> {
-    const { backend, ctx, startedAt, startTime } = await initializeSimulation(proposal, backendType, logger);
+    const { backend, ctx, startedAt, startTime } = await initializeSimulation(proposal, backendType, logger, options);
 
     try {
         let chainResults: ChainExecutionResult[];
@@ -214,6 +229,8 @@ export interface SimulateProposalOptions {
     proposalId: string;
     mode?: SimulationMode;
     backend?: BackendType;
+    /** Whether to refresh Tenderly virtual testnets before simulation. Default: true for Tenderly backend. */
+    refreshTestnets?: boolean;
 }
 
 /**
@@ -228,13 +245,13 @@ export interface SimulateProposalOptions {
 export async function simulateProposal(
     options: SimulateProposalOptions
 ): Promise<SimulationResult> {
-    const { proposalId, mode = "governance", backend: backendType = "tenderly" } = options;
+    const { proposalId, mode = "governance", backend: backendType = "tenderly", refreshTestnets } = options;
 
     // Fetch proposal from on-chain
     const tempProvider = new ethers.JsonRpcProvider(loadConfig().chains.mainnet.rpcUrl);
     const proposal = await getProposal(proposalId, tempProvider);
 
-    return simulateFromProposal(proposal, proposalId, mode, backendType);
+    return simulateFromProposal(proposal, proposalId, mode, backendType, undefined, { refreshTestnets });
 }
 
 /**
@@ -264,6 +281,8 @@ export interface ProposalDetailsInput {
 export interface SimulateFromCalldataOptions {
     mode?: SimulationMode;
     backend?: BackendType;
+    /** Whether to refresh Tenderly virtual testnets before simulation. Default: true for Tenderly backend. */
+    refreshTestnets?: boolean;
 }
 
 /**
@@ -279,7 +298,7 @@ export async function simulateProposalFromCalldata(
     calldata: string,
     options?: SimulateFromCalldataOptions
 ): Promise<SimulationResult> {
-    const { mode = "governance", backend: backendType = "tenderly" } = options ?? {};
+    const { mode = "governance", backend: backendType = "tenderly", refreshTestnets } = options ?? {};
 
     // Parse the calldata to get proposal details
     const proposalDetails = parseProposalCalldata(calldata);
@@ -289,12 +308,14 @@ export async function simulateProposalFromCalldata(
         calldatas: proposalDetails.calldatas,
     };
 
-    return simulateFromProposal(proposal, undefined, mode, backendType);
+    return simulateFromProposal(proposal, undefined, mode, backendType, undefined, { refreshTestnets });
 }
 
 export interface SimulateFromDetailsOptions {
     mode?: SimulationMode;
     backend?: BackendType;
+    /** Whether to refresh Tenderly virtual testnets before simulation. Default: true for Tenderly backend. */
+    refreshTestnets?: boolean;
 }
 
 /**
@@ -310,7 +331,7 @@ export async function simulateProposalFromDetails(
     details: ProposalDetailsInput,
     options?: SimulateFromDetailsOptions
 ): Promise<SimulationResult> {
-    const { mode = "governance", backend: backendType = "tenderly" } = options ?? {};
+    const { mode = "governance", backend: backendType = "tenderly", refreshTestnets } = options ?? {};
 
     const proposal: Proposal = {
         targets: details.targets,
@@ -318,105 +339,8 @@ export async function simulateProposalFromDetails(
         calldatas: details.calldatas,
     };
 
-    return simulateFromProposal(proposal, undefined, mode, backendType);
+    return simulateFromProposal(proposal, undefined, mode, backendType, undefined, { refreshTestnets });
 }
 
 // ============ Revert Functions (Exported) ============
 
-/**
- * Get all snapshot IDs for a chain
- */
-export { getSnapshots } from "./core";
-
-/**
- * Resolve a snapshot reference to an actual snapshot ID
- */
-export { resolveSnapshotId } from "./core";
-
-/**
- * Revert a single chain to a snapshot
- *
- * @param chain - The chain name to revert
- * @param snapshotRef - Snapshot reference (default: "latest")
- * @param backendType - Backend to use: "tenderly" (default for revert, since Anvil is ephemeral)
- * @returns RevertResult with success status and details
- */
-export async function revertChain(
-    chain: string,
-    snapshotRef?: string,
-    backendType: BackendType = "tenderly"
-): Promise<RevertResult> {
-    if (backendType === "anvil") {
-        return {
-            chain,
-            success: false,
-            error: "Anvil backend does not support persistent snapshots. Use tenderly backend for revert operations.",
-        };
-    }
-
-    const backend = createBackend(backendType);
-    await backend.initialize([chain]);
-
-    try {
-        const snapshotId = resolveSnapshotId(chain, snapshotRef);
-        if (!snapshotId) {
-            return {
-                chain,
-                success: false,
-                error: `No snapshot found for ${chain} (ref: ${snapshotRef ?? "latest"})`,
-            };
-        }
-
-        const result = await backend.revert(chain, snapshotId);
-        return {
-            chain,
-            success: result,
-            snapshotId,
-            error: result ? undefined : "evm_revert returned false",
-        };
-    } catch (error) {
-        return {
-            chain,
-            success: false,
-            error: error instanceof Error ? error.message : String(error),
-        };
-    } finally {
-        await backend.cleanup();
-    }
-}
-
-/**
- * Revert multiple chains to their snapshots
- *
- * @param chains - Array of chain names to revert
- * @param snapshotRef - Snapshot reference for all chains (default: "latest")
- * @param backendType - Backend to use: "tenderly" (default)
- * @returns Array of RevertResult for each chain
- */
-export async function revertChains(
-    chains: string[],
-    snapshotRef?: string,
-    backendType: BackendType = "tenderly"
-): Promise<RevertResult[]> {
-    const results: RevertResult[] = [];
-    for (const chain of chains) {
-        const result = await revertChain(chain, snapshotRef, backendType);
-        results.push(result);
-    }
-    return results;
-}
-
-/**
- * Revert all configured chains to their snapshots
- *
- * @param snapshotRef - Snapshot reference for all chains (default: "latest")
- * @param backendType - Backend to use: "tenderly" (default)
- * @returns Array of RevertResult for each chain
- */
-export async function revertAllChains(
-    snapshotRef?: string,
-    backendType: BackendType = "tenderly"
-): Promise<RevertResult[]> {
-    const chains = Object.keys(loadConfig().chains);
-    return revertChains(chains, snapshotRef, backendType);
-}

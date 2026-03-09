@@ -91,6 +91,7 @@ export default function SimulatePage() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [startTime, setStartTime] = React.useState<number | null>(null);
+  const [refreshTestnets, setRefreshTestnets] = React.useState(true);
 
   const handleSubmit = async (request: SimulateRequest) => {
     setLoading(true);
@@ -166,6 +167,8 @@ export default function SimulatePage() {
             <SimulatorForm
               onSubmit={handleSubmit}
               isLoading={loading}
+              refreshTestnets={refreshTestnets}
+              onRefreshTestnetsChange={setRefreshTestnets}
             />
           </div>
 
@@ -184,7 +187,7 @@ export default function SimulatePage() {
               {[528, 524, 519].map((id) => (
                 <button
                   key={id}
-                  onClick={() => handleSubmit({ type: "id", proposalId: id, mode: "governance", backend: "tenderly" })}
+                  onClick={() => handleSubmit({ type: "id", proposalId: id, mode: "governance", backend: "tenderly", refreshTestnets })}
                   className="px-3 py-1 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg hover:border-slate-300 hover:bg-slate-50 transition-colors"
                 >
                   #{id}

@@ -30,12 +30,6 @@ import {
     isCCIPTarget,
     ccipTargetToL2Chain,
 } from "./proposals";
-import {
-    createSnapshot,
-    getRpcUrl,
-    readSnapshotFile,
-    writeSnapshotFile,
-} from "./snapshots";
 
 const config = loadConfig();
 
@@ -439,11 +433,6 @@ export async function simulateL2(
 
     logger.section(chain);
 
-    // Create snapshot for L2 chain before execution (only if backend supports persistent snapshots)
-    if (backend.supportsPersistentSnapshots()) {
-        await createSnapshot(chain, backend, logger);
-    }
-
     const provider = backend.getProvider(chain);
     const chainConfig = config.chains[chain];
     const receiver = new ethers.Contract(
@@ -560,14 +549,17 @@ export async function simulateCCIPL2(
 
     logger.section(chain);
 
-    // Create snapshot for chain before execution
-    if (backend.supportsPersistentSnapshots()) {
-        await createSnapshot(chain, backend, logger);
-    }
-
     const provider = backend.getProvider(chain);
     const chainConfig = config.chains[chain];
-    const receiverAddress = chainConfig.receiver!;
+
+    if (!chainConfig?.receiver) {
+        throw new Error(`Missing 'receiver' address for chain "${chain}" in compound-config.json`);
+    }
+    if (!chainConfig.l2msgsender) {
+        throw new Error(`Missing 'l2msgsender' address for chain "${chain}" in compound-config.json`);
+    }
+
+    const receiverAddress = chainConfig.receiver;
 
     // Parse the ccipSend calldata to extract the CCIP message fields
     const ccipSendIface = new Interface([
@@ -601,7 +593,7 @@ export async function simulateCCIPL2(
     }]);
 
     // The CCIP receiver trusts calls from the L2 CCIP Router
-    const l2Router = chainConfig.l2msgsender!;
+    const l2Router = chainConfig.l2msgsender;
     await backend.impersonateAccount(chain, l2Router);
 
     logger.step("Sending CCIP message to receiver");
@@ -704,19 +696,6 @@ export async function runDirect(
     await backend.impersonateAccount(chain, fromAddress);
 
     if (persist) {
-        // Create snapshot for L2 chains (only if backend supports persistent snapshots)
-        if (chain !== "mainnet" && backend.supportsPersistentSnapshots()) {
-            const snapshot = await backend.snapshot(chain);
-            const rpcUrl = getRpcUrl(chain);
-            const data = readSnapshotFile(chain);
-            if (!data[rpcUrl]) {
-                data[rpcUrl] = [];
-            }
-            data[rpcUrl]!.push(snapshot);
-            writeSnapshotFile(chain, data);
-            logger.info(`Snapshot ${chain}`, snapshot);
-        }
-
         for (let i = 0; i < params.length; i++) {
             const param = params[i]!;
             logger.step(`Executing transaction ${i + 1}/${params.length}`);

@@ -5,7 +5,7 @@
 export interface ChainConfig {
   chainId: number;
   rpcUrl: string;
-  simulatorRpcUrl?: string;
+
   directory: string;
   governorAddress?: string;
   timelockAddress?: string;
@@ -23,6 +23,9 @@ export interface DefaultsConfig {
 
 export interface AppConfig {
   etherscanApiKey: string;
+  tenderlyAccessToken?: string;
+  tenderlyAccount?: string;
+  tenderlyProject?: string;
   chains: Record<string, ChainConfig>;
   defaults: DefaultsConfig;
 }
