@@ -48,6 +48,7 @@ export type SimulateRequestById = {
   mode?: SimulationMode;
   backend?: BackendType;
   refreshTestnets?: boolean;
+  deleteOldTestnets?: boolean;
 };
 
 export type SimulateRequestByCalldata = {
@@ -56,6 +57,7 @@ export type SimulateRequestByCalldata = {
   mode?: SimulationMode;
   backend?: BackendType;
   refreshTestnets?: boolean;
+  deleteOldTestnets?: boolean;
 };
 
 export type SimulateRequestByDetails = {
@@ -69,6 +71,7 @@ export type SimulateRequestByDetails = {
   mode?: SimulationMode;
   backend?: BackendType;
   refreshTestnets?: boolean;
+  deleteOldTestnets?: boolean;
 };
 
 export type SimulateRequest =

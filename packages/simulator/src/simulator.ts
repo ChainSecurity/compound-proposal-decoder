@@ -54,7 +54,7 @@ export type {
     BackendType,
 } from "./types";
 
-export { refreshVirtualTestnets, refreshVirtualTestnet, type RefreshResult } from "./tenderly-api";
+export { refreshVirtualTestnets, refreshVirtualTestnet, listVirtualTestnets, type RefreshResult, type VirtualTestnetInfo } from "./tenderly-api";
 
 export type {
     SerializedTransactionExecution,
@@ -80,7 +80,7 @@ export type { Backend } from "./backends";
 // Re-export core types
 export type { Logger, SimulationContext } from "./core/types";
 export { nullLogger } from "./core/types";
-export { clearConfigCache } from "./config";
+export { clearConfigCache, getTestnetInfo } from "./config";
 
 // Re-export proposal utilities
 export type { ProposalDetails } from "./core/proposals";
@@ -97,6 +97,7 @@ interface SimulationInit {
 
 interface InitializeSimulationOptions {
     refreshTestnets?: boolean;
+    deleteOldTestnets?: boolean;
 }
 
 /**
@@ -123,7 +124,7 @@ async function initializeSimulation(
     if (shouldRefresh) {
         const apiConfig = getTenderlyApiConfig();
         if (apiConfig) {
-            await refreshVirtualTestnets(chainsToInitialize, logger, proposalId);
+            await refreshVirtualTestnets(chainsToInitialize, logger, proposalId, options?.deleteOldTestnets ?? false);
         } else {
             logger.warn("Tenderly API not configured — skipping testnet refresh. Set tenderlyAccessToken, tenderlyAccount, and tenderlyProject in compound-config.json");
         }
@@ -186,7 +187,7 @@ async function simulateFromProposal(
     mode: SimulationMode,
     backendType: BackendType,
     logger: Logger = nullLogger,
-    options?: { refreshTestnets?: boolean }
+    options?: { refreshTestnets?: boolean; deleteOldTestnets?: boolean }
 ): Promise<SimulationResult> {
     const { backend, ctx, startedAt, startTime } = await initializeSimulation(proposal, proposalId, backendType, logger, options);
 
@@ -232,6 +233,8 @@ export interface SimulateProposalOptions {
     backend?: BackendType;
     /** Whether to refresh Tenderly virtual testnets before simulation. Default: true for Tenderly backend. */
     refreshTestnets?: boolean;
+    /** Whether to delete old Tenderly virtual testnets before creating new ones. Default: false. */
+    deleteOldTestnets?: boolean;
 }
 
 /**
@@ -246,13 +249,13 @@ export interface SimulateProposalOptions {
 export async function simulateProposal(
     options: SimulateProposalOptions
 ): Promise<SimulationResult> {
-    const { proposalId, mode = "governance", backend: backendType = "tenderly", refreshTestnets } = options;
+    const { proposalId, mode = "governance", backend: backendType = "tenderly", refreshTestnets, deleteOldTestnets } = options;
 
     // Fetch proposal from on-chain
     const tempProvider = new ethers.JsonRpcProvider(loadConfig().chains.mainnet.rpcUrl);
     const proposal = await getProposal(proposalId, tempProvider);
 
-    return simulateFromProposal(proposal, proposalId, mode, backendType, undefined, { refreshTestnets });
+    return simulateFromProposal(proposal, proposalId, mode, backendType, undefined, { refreshTestnets, deleteOldTestnets });
 }
 
 /**
@@ -284,6 +287,8 @@ export interface SimulateFromCalldataOptions {
     backend?: BackendType;
     /** Whether to refresh Tenderly virtual testnets before simulation. Default: true for Tenderly backend. */
     refreshTestnets?: boolean;
+    /** Whether to delete old Tenderly virtual testnets before creating new ones. Default: false. */
+    deleteOldTestnets?: boolean;
 }
 
 /**
@@ -299,7 +304,7 @@ export async function simulateProposalFromCalldata(
     calldata: string,
     options?: SimulateFromCalldataOptions
 ): Promise<SimulationResult> {
-    const { mode = "governance", backend: backendType = "tenderly", refreshTestnets } = options ?? {};
+    const { mode = "governance", backend: backendType = "tenderly", refreshTestnets, deleteOldTestnets } = options ?? {};
 
     // Parse the calldata to get proposal details
     const proposalDetails = parseProposalCalldata(calldata);
@@ -309,7 +314,7 @@ export async function simulateProposalFromCalldata(
         calldatas: proposalDetails.calldatas,
     };
 
-    return simulateFromProposal(proposal, undefined, mode, backendType, undefined, { refreshTestnets });
+    return simulateFromProposal(proposal, undefined, mode, backendType, undefined, { refreshTestnets, deleteOldTestnets });
 }
 
 export interface SimulateFromDetailsOptions {
@@ -317,6 +322,8 @@ export interface SimulateFromDetailsOptions {
     backend?: BackendType;
     /** Whether to refresh Tenderly virtual testnets before simulation. Default: true for Tenderly backend. */
     refreshTestnets?: boolean;
+    /** Whether to delete old Tenderly virtual testnets before creating new ones. Default: false. */
+    deleteOldTestnets?: boolean;
 }
 
 /**
@@ -332,7 +339,7 @@ export async function simulateProposalFromDetails(
     details: ProposalDetailsInput,
     options?: SimulateFromDetailsOptions
 ): Promise<SimulationResult> {
-    const { mode = "governance", backend: backendType = "tenderly", refreshTestnets } = options ?? {};
+    const { mode = "governance", backend: backendType = "tenderly", refreshTestnets, deleteOldTestnets } = options ?? {};
 
     const proposal: Proposal = {
         targets: details.targets,
@@ -340,7 +347,7 @@ export async function simulateProposalFromDetails(
         calldatas: details.calldatas,
     };
 
-    return simulateFromProposal(proposal, undefined, mode, backendType, undefined, { refreshTestnets });
+    return simulateFromProposal(proposal, undefined, mode, backendType, undefined, { refreshTestnets, deleteOldTestnets });
 }
 
 // ============ Revert Functions (Exported) ============

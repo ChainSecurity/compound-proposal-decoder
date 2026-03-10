@@ -78,7 +78,7 @@ async function createVirtualTestnet(
   chain: string,
   logger: Logger = nullLogger,
   proposalId?: string
-): Promise<{ rpcUrl: string; vnetId: string }> {
+): Promise<{ rpcUrl: string; vnetId: string; displayName: string }> {
   const rawChainConfig = getRawChainConfig(chain);
   if (!rawChainConfig) {
     throw new Error(`No chain config found for: ${chain}`);
@@ -132,7 +132,29 @@ async function createVirtualTestnet(
   }
 
   logger.done(`Created virtual testnet for ${chain}: ${adminRpc.url} (vnetId: ${data.id})`);
-  return { rpcUrl: adminRpc.url, vnetId: data.id };
+  return { rpcUrl: adminRpc.url, vnetId: data.id, displayName };
+}
+
+export interface VirtualTestnetInfo {
+  id: string;
+  slug: string;
+  displayName: string;
+}
+
+/**
+ * List all Virtual TestNets from the Tenderly API.
+ */
+export async function listVirtualTestnets(): Promise<VirtualTestnetInfo[]> {
+  const response = await tenderlyFetch("/vnets");
+  if (!response.ok) {
+    throw new Error(`Failed to list virtual testnets: ${response.status}`);
+  }
+  const data = (await response.json()) as TenderlyVnetResponse[];
+  return data.map((vnet) => ({
+    id: vnet.id,
+    slug: vnet.slug,
+    displayName: vnet.display_name,
+  }));
 }
 
 export interface RefreshResult {
@@ -150,22 +172,25 @@ export interface RefreshResult {
 export async function refreshVirtualTestnet(
   chain: string,
   logger: Logger = nullLogger,
-  proposalId?: string
+  proposalId?: string,
+  deleteOld: boolean = false
 ): Promise<RefreshResult> {
   try {
     const oldRpcUrl = getSimulatorRpcUrl(chain);
 
-    // Delete the existing testnet using the stored vnet ID
-    const oldVnetId = getVnetId(chain);
-    if (oldVnetId) {
-      await deleteVirtualTestnet(oldVnetId, logger);
+    // Optionally delete the existing testnet
+    if (deleteOld) {
+      const oldVnetId = getVnetId(chain);
+      if (oldVnetId) {
+        await deleteVirtualTestnet(oldVnetId, logger);
+      }
     }
 
     // Create a fresh testnet
-    const { rpcUrl: newRpcUrl, vnetId: newVnetId } = await createVirtualTestnet(chain, logger, proposalId);
+    const { rpcUrl: newRpcUrl, vnetId: newVnetId, displayName } = await createVirtualTestnet(chain, logger, proposalId);
 
-    // Update config with the new URL and vnet ID
-    updateSimulatorRpcUrl(chain, newRpcUrl, newVnetId);
+    // Update config with the new URL, vnet ID, and display name
+    updateSimulatorRpcUrl(chain, newRpcUrl, newVnetId, displayName);
 
     return { chain, success: true, oldRpcUrl, newRpcUrl };
   } catch (error) {
@@ -182,13 +207,14 @@ export async function refreshVirtualTestnet(
 export async function refreshVirtualTestnets(
   chains: string[],
   logger: Logger = nullLogger,
-  proposalId?: string
+  proposalId?: string,
+  deleteOld: boolean = false
 ): Promise<RefreshResult[]> {
   logger.section("Refreshing Virtual TestNets");
 
   const results: RefreshResult[] = [];
   for (const chain of chains) {
-    const result = await refreshVirtualTestnet(chain, logger, proposalId);
+    const result = await refreshVirtualTestnet(chain, logger, proposalId, deleteOld);
     results.push(result);
   }
 

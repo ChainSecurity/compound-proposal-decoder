@@ -36,6 +36,7 @@ interface CLIArgs {
     persist: boolean;
     direct: boolean;
     noRefresh: boolean;
+    deleteOld: boolean;
     backend: BackendType;
 }
 
@@ -48,6 +49,7 @@ function printHelp(): void {
     console.log("  --direct             Execute directly from timelock (skip governance)");
     console.log("  --backend <type>     Backend to use: tenderly (default) or anvil");
     console.log("  --no-refresh         Skip refreshing Tenderly virtual testnets before simulation");
+    console.log("  --delete-old         Delete old Tenderly virtual testnets before creating new ones");
     console.log("");
     console.log("Examples:");
     console.log("  pnpm simulate 524                           # Simulate with Tenderly (default)");
@@ -71,6 +73,7 @@ function getArgs(): CLIArgs {
             persist: { type: "boolean", default: false },
             direct: { type: "boolean", default: false },
             "no-refresh": { type: "boolean", default: false },
+            "delete-old": { type: "boolean", default: false },
             backend: { type: "string", default: "tenderly" },
         },
         allowPositionals: true,
@@ -117,6 +120,7 @@ function getArgs(): CLIArgs {
         persist: values.persist ?? false,
         direct: values.direct ?? false,
         noRefresh: values["no-refresh"] ?? false,
+        deleteOld: values["delete-old"] ?? false,
         backend,
     };
 }
@@ -187,7 +191,7 @@ async function handleSimulate(args: CLIArgs): Promise<void> {
         mode,
         args.backend,
         log,  // CLI uses real logger
-        { refreshTestnets: !args.noRefresh }
+        { refreshTestnets: !args.noRefresh, deleteOldTestnets: args.deleteOld }
     );
 
     // CLI-specific output

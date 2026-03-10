@@ -93,6 +93,7 @@ export function getForkUrl(chain: string): string | undefined {
 interface TestnetEntry {
   rpcUrl: string;
   vnetId: string;
+  displayName?: string;
 }
 
 /**
@@ -161,10 +162,30 @@ export function getChainConfig(chainName: string): ChainConfig | undefined {
   return loadConfig().chains[chainName];
 }
 
-export function updateSimulatorRpcUrl(chainName: string, newRpcUrl: string, vnetId: string): void {
+export function updateSimulatorRpcUrl(chainName: string, newRpcUrl: string, vnetId: string, displayName?: string): void {
   const testnets = readTestnetsFile();
-  testnets[chainName] = { rpcUrl: newRpcUrl, vnetId };
+  testnets[chainName] = { rpcUrl: newRpcUrl, vnetId, displayName };
   writeTestnetsFile(testnets);
+}
+
+/**
+ * Get the display name of the current virtual testnet for a chain.
+ */
+export function getTestnetDisplayName(chain: string): string | undefined {
+  const testnets = readTestnetsFile();
+  return testnets[chain]?.displayName;
+}
+
+/**
+ * Get current testnet info for all chains.
+ */
+export function getTestnetInfo(): Record<string, { vnetId: string; displayName?: string }> {
+  const testnets = readTestnetsFile();
+  const result: Record<string, { vnetId: string; displayName?: string }> = {};
+  for (const [chain, entry] of Object.entries(testnets)) {
+    result[chain] = { vnetId: entry.vnetId, displayName: entry.displayName };
+  }
+  return result;
 }
 
 export function getDefaults(): Config["defaults"] {

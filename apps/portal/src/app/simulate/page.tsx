@@ -92,6 +92,16 @@ export default function SimulatePage() {
   const [error, setError] = React.useState<string | null>(null);
   const [startTime, setStartTime] = React.useState<number | null>(null);
   const [refreshTestnets, setRefreshTestnets] = React.useState(true);
+  const [deleteOldTestnets, setDeleteOldTestnets] = React.useState(false);
+  const [testnetInfo, setTestnetInfo] = React.useState<Record<string, { displayName?: string }>>({});
+
+  // Fetch current testnet info on mount
+  React.useEffect(() => {
+    fetch("/api/testnets")
+      .then((res) => res.json())
+      .then((data) => setTestnetInfo(data))
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async (request: SimulateRequest) => {
     setLoading(true);
@@ -169,6 +179,9 @@ export default function SimulatePage() {
               isLoading={loading}
               refreshTestnets={refreshTestnets}
               onRefreshTestnetsChange={setRefreshTestnets}
+              deleteOldTestnets={deleteOldTestnets}
+              onDeleteOldTestnetsChange={setDeleteOldTestnets}
+              testnetInfo={testnetInfo}
             />
           </div>
 
@@ -187,7 +200,7 @@ export default function SimulatePage() {
               {[528, 524, 519].map((id) => (
                 <button
                   key={id}
-                  onClick={() => handleSubmit({ type: "id", proposalId: id, mode: "governance", backend: "tenderly", refreshTestnets })}
+                  onClick={() => handleSubmit({ type: "id", proposalId: id, mode: "governance", backend: "tenderly", refreshTestnets, deleteOldTestnets })}
                   className="px-3 py-1 text-sm text-slate-600 bg-white border border-slate-200 rounded-lg hover:border-slate-300 hover:bg-slate-50 transition-colors"
                 >
                   #{id}
