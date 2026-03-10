@@ -193,22 +193,6 @@ export function ChainConfigCard({
               />
             </div>
 
-            <div className="space-y-2">
-              <FieldLabel
-                label="Simulator RPC URL"
-                tooltip="Tenderly virtual testnet URL for running simulations."
-                hasWarning={hasFieldPlaceholder(config.simulatorRpcUrl)}
-                optional
-              />
-              <SecretInput
-                value={config.simulatorRpcUrl || ""}
-                onChange={(e) =>
-                  handleChange("simulatorRpcUrl", e.target.value || undefined)
-                }
-                placeholder="https://virtual.mainnet.eu.rpc.tenderly.co/..."
-              />
-            </div>
-
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <FieldLabel

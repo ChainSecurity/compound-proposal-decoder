@@ -8,7 +8,7 @@ interface SimulationProgressProps {
 }
 
 const steps = [
-  { label: "Creating state snapshots", icon: Globe },
+  { label: "Provisioning virtual testnets", icon: Globe },
   { label: "Setting up delegation", icon: Vote },
   { label: "Executing transactions", icon: Zap },
   { label: "Processing bridges", icon: Globe },

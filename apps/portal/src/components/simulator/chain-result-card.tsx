@@ -4,9 +4,9 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight, Globe, Fuel, ExternalLink, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { TransactionExecution } from "./transaction-execution";
-import { RevertButton } from "./revert-button";
+
 import { getChainName, getChainColor } from "@/lib/chains";
-import type { SerializedChainExecutionResult, RevertResultItem } from "@/types/simulator";
+import type { SerializedChainExecutionResult } from "@/types/simulator";
 
 interface ChainResultCardProps {
   result: SerializedChainExecutionResult;
@@ -80,25 +80,9 @@ function isTenderlyUrl(rpcUrl: string): boolean {
 
 export function ChainResultCard({ result, defaultExpanded = true }: ChainResultCardProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-  const [revertMessage, setRevertMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const chainName = getChainName(result.chainId);
   const chainColor = getChainColor(result.chainId);
-
-  const handleRevertComplete = (results: RevertResultItem[]) => {
-    const chainResult = results[0];
-    if (chainResult?.success) {
-      setRevertMessage({ type: "success", text: `Reverted to ${chainResult.snapshotId?.slice(0, 10)}...` });
-    } else {
-      setRevertMessage({ type: "error", text: chainResult?.error ?? "Revert failed" });
-    }
-    setTimeout(() => setRevertMessage(null), 5000);
-  };
-
-  const handleRevertError = (error: string) => {
-    setRevertMessage({ type: "error", text: error });
-    setTimeout(() => setRevertMessage(null), 5000);
-  };
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
@@ -162,29 +146,8 @@ export function ChainResultCard({ result, defaultExpanded = true }: ChainResultC
                 <span>Tenderly</span>
               </a>
             )}
-            {result.persisted && (
-              <RevertButton
-                chain={result.chain}
-                onRevertComplete={handleRevertComplete}
-                onRevertError={handleRevertError}
-              />
-            )}
           </div>
         </div>
-
-        {/* Revert message */}
-        {revertMessage && (
-          <div
-            className={`mt-4 text-sm px-4 py-2 rounded-lg ${
-              revertMessage.type === "success"
-                ? "bg-emerald-50 text-emerald-700"
-                : "bg-red-50 text-red-700"
-            }`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {revertMessage.text}
-          </div>
-        )}
 
         {/* High gas warning for Ethereum (> 14M) */}
         {result.chainId === 1 && exceedsGasWarning(result.totalGasUsed) && !exceedsGasThreshold(result.totalGasUsed) && (

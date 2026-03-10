@@ -10,7 +10,6 @@ const CONFIG_PATH = join(MONOREPO_ROOT, "compound-config.json");
 export interface ChainConfig {
   chainId: number;
   rpcUrl?: string;
-  simulatorRpcUrl?: string;
   directory?: string;
   governorAddress?: string;
   timelockAddress?: string;

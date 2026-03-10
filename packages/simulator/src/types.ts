@@ -82,11 +82,3 @@ export type Proposal = {
   values: bigint[];
   calldatas: string[];
 };
-
-// Revert types
-export type RevertResult = {
-  chain: string;
-  success: boolean;
-  snapshotId?: string;
-  error?: string;
-};

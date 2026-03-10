@@ -1,10 +1,12 @@
 {
   "etherscanApiKey": "your-etherscan-api-key-here",
+  "tenderlyAccessToken": "your-tenderly-access-token-here",
+  "tenderlyAccount": "your-tenderly-account-slug",
+  "tenderlyProject": "your-tenderly-project-slug",
   "chains": {
     "mainnet": {
       "chainId": 1,
       "rpcUrl": "https://mainnet.gateway.tenderly.co/<your-api-key>",
-      "simulatorRpcUrl": "https://virtual.mainnet.eu.rpc.tenderly.co/<your-virtual-testnet-id>",
       "directory": "mainnet",
       "governorAddress": "0x309a862bbC1A00e45506cB8A802D1ff10004c8C0",
       "timelockAddress": "0x6d903f6003cca6255D85CcA4D3B5E5146dC33925"
@@ -12,7 +14,6 @@
     "arbitrum": {
       "chainId": 42161,
       "rpcUrl": "https://arbitrum.gateway.tenderly.co/<your-api-key>",
-      "simulatorRpcUrl": "https://virtual.arbitrum.eu.rpc.tenderly.co/<your-virtual-testnet-id>",
       "directory": "arbitrum",
       "timelockAddress": "0x3fb4d38ea7ec20d91917c09591490eeda38cf88a",
       "bridge": "0x4Dbd4fc535Ac27206064B68FfCf827b0A60BAB3f",
@@ -22,7 +23,6 @@
     "optimism": {
       "chainId": 10,
       "rpcUrl": "https://optimism.gateway.tenderly.co/<your-api-key>",
-      "simulatorRpcUrl": "https://virtual.optimism.eu.rpc.tenderly.co/<your-virtual-testnet-id>",
       "directory": "optimism",
       "timelockAddress": "0xd98Be00b5D27fc98112BdE293e487f8D4cA57d07",
       "bridge": "0x25ace71c97B33Cc4729CF772ae268934F7ab5fA1",
@@ -32,7 +32,6 @@
     "base": {
       "chainId": 8453,
       "rpcUrl": "https://base.gateway.tenderly.co/<your-api-key>",
-      "simulatorRpcUrl": "https://virtual.base.eu.rpc.tenderly.co/<your-virtual-testnet-id>",
       "directory": "base",
       "timelockAddress": "0xCC3E7c85Bb0EE4f09380e041fee95a0caeDD4a02",
       "bridge": "0x866E82a600A1414e583f7F13623F1aC5d58b0Afa",
@@ -42,7 +41,6 @@
     "scroll": {
       "chainId": 534352,
       "rpcUrl": "https://scroll-mainnet.gateway.tenderly.co/<your-api-key>",
-      "simulatorRpcUrl": "https://virtual.scroll-mainnet.eu.rpc.tenderly.co/<your-virtual-testnet-id>",
       "directory": "scroll",
       "timelockAddress": "0xF6013e80E9e6AC211Cc031ad1CE98B3Aa20b73E4",
       "bridge": "0x6774Bcbd5ceCeF1336b5300fb5186a12DDD8b367"
@@ -50,7 +48,6 @@
     "mantle": {
       "chainId": 5000,
       "rpcUrl": "https://mantle.gateway.tenderly.co/<your-api-key>",
-      "simulatorRpcUrl": "https://virtual.mantle.eu.rpc.tenderly.co/<your-virtual-testnet-id>",
       "directory": "mantle",
       "timelockAddress": "0x16C7B5C1b10489F4B111af11de2Bd607c9728107",
       "bridge": "0x676A795fe6E43C17c668de16730c3F690FEB7120",
@@ -75,7 +72,6 @@
     "ronin": {
       "chainId": 2020,
       "rpcUrl": "https://api.roninchain.com/rpc",
-      "simulatorRpcUrl": "https://virtual.ronin.rpc.tenderly.co/<your-virtual-testnet-id>",
       "directory": "ronin",
       "timelockAddress": "0xBbb0Ebd903fafbb8fFF58B922fD0CD85E251ac2c",
       "receiver": "0x2c7EfA766338D33B9192dB1fB5D170Bdc03ef3F9",
