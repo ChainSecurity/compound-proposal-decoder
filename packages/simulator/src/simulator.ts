@@ -104,6 +104,7 @@ interface InitializeSimulationOptions {
  */
 async function initializeSimulation(
     proposal: Proposal,
+    proposalId: string | undefined,
     backendType: BackendType,
     logger: Logger = nullLogger,
     options?: InitializeSimulationOptions
@@ -122,7 +123,7 @@ async function initializeSimulation(
     if (shouldRefresh) {
         const apiConfig = getTenderlyApiConfig();
         if (apiConfig) {
-            await refreshVirtualTestnets(chainsToInitialize, logger);
+            await refreshVirtualTestnets(chainsToInitialize, logger, proposalId);
         } else {
             logger.warn("Tenderly API not configured — skipping testnet refresh. Set tenderlyAccessToken, tenderlyAccount, and tenderlyProject in compound-config.json");
         }
@@ -187,7 +188,7 @@ async function simulateFromProposal(
     logger: Logger = nullLogger,
     options?: { refreshTestnets?: boolean }
 ): Promise<SimulationResult> {
-    const { backend, ctx, startedAt, startTime } = await initializeSimulation(proposal, backendType, logger, options);
+    const { backend, ctx, startedAt, startTime } = await initializeSimulation(proposal, proposalId, backendType, logger, options);
 
     try {
         let chainResults: ChainExecutionResult[];

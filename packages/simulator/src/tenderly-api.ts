@@ -76,15 +76,20 @@ async function deleteVirtualTestnet(vnetId: string, logger: Logger = nullLogger)
  */
 async function createVirtualTestnet(
   chain: string,
-  logger: Logger = nullLogger
+  logger: Logger = nullLogger,
+  proposalId?: string
 ): Promise<{ rpcUrl: string; vnetId: string }> {
   const rawChainConfig = getRawChainConfig(chain);
   if (!rawChainConfig) {
     throw new Error(`No chain config found for: ${chain}`);
   }
 
-  const slug = `sim-${chain}-${Date.now()}`;
-  const displayName = `Simulator ${chain} ${new Date().toISOString().slice(0, 19)}`;
+  const now = new Date();
+  const date = now.toISOString().slice(0, 10);
+  const time = now.toISOString().slice(11, 16).replace(":", "");
+  const idPart = proposalId ?? "unknown";
+  const slug = `pd-${idPart}-${date}-${time}-${chain}`;
+  const displayName = `pd-${idPart}-${date}-${time}`;
 
   logger.step(`Creating virtual testnet for ${chain} (chainId: ${rawChainConfig.chainId})`);
 
@@ -144,7 +149,8 @@ export interface RefreshResult {
  */
 export async function refreshVirtualTestnet(
   chain: string,
-  logger: Logger = nullLogger
+  logger: Logger = nullLogger,
+  proposalId?: string
 ): Promise<RefreshResult> {
   try {
     const oldRpcUrl = getSimulatorRpcUrl(chain);
@@ -156,7 +162,7 @@ export async function refreshVirtualTestnet(
     }
 
     // Create a fresh testnet
-    const { rpcUrl: newRpcUrl, vnetId: newVnetId } = await createVirtualTestnet(chain, logger);
+    const { rpcUrl: newRpcUrl, vnetId: newVnetId } = await createVirtualTestnet(chain, logger, proposalId);
 
     // Update config with the new URL and vnet ID
     updateSimulatorRpcUrl(chain, newRpcUrl, newVnetId);
@@ -175,13 +181,14 @@ export async function refreshVirtualTestnet(
  */
 export async function refreshVirtualTestnets(
   chains: string[],
-  logger: Logger = nullLogger
+  logger: Logger = nullLogger,
+  proposalId?: string
 ): Promise<RefreshResult[]> {
   logger.section("Refreshing Virtual TestNets");
 
   const results: RefreshResult[] = [];
   for (const chain of chains) {
-    const result = await refreshVirtualTestnet(chain, logger);
+    const result = await refreshVirtualTestnet(chain, logger, proposalId);
     results.push(result);
   }
 
