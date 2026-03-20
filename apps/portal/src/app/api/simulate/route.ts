@@ -18,6 +18,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<SimulateR
     const mode: SimulationMode = body.mode ?? "governance";
     const backend: BackendType = body.backend ?? "tenderly";
     const refreshTestnets = body.refreshTestnets;
+    const deleteOldTestnets = body.deleteOldTestnets;
 
     switch (body.type) {
       case "id": {
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<SimulateR
           mode,
           backend,
           refreshTestnets,
+          deleteOldTestnets,
         });
         break;
       }
@@ -49,7 +51,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<SimulateR
             { status: 400 }
           );
         }
-        result = await simulateProposalFromCalldata(body.calldata, { mode, backend, refreshTestnets });
+        result = await simulateProposalFromCalldata(body.calldata, { mode, backend, refreshTestnets, deleteOldTestnets });
         break;
       }
 
@@ -85,7 +87,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<SimulateR
           descriptionHash: descriptionHash ?? "0x",
         };
 
-        result = await simulateProposalFromDetails(proposalDetails, { mode, backend, refreshTestnets });
+        result = await simulateProposalFromDetails(proposalDetails, { mode, backend, refreshTestnets, deleteOldTestnets });
         break;
       }
 

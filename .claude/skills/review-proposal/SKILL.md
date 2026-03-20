@@ -527,6 +527,7 @@ Watch out for these known issues:
 | **Stale forum posts** | Forum post may have been updated after initial posting | Check forum post edit history |
 | **Multiple recipients** | Bridge proposals may split funds across multiple L2 contracts | Verify all recipients are correct |
 | **Gas limit too low** | Non-standard `_minGasLimit` for complex L2 operations | Compare to similar past proposals |
+| **The required gas exceed tx gas limit**| The tx gas limit on Ethereum is 16 mil. No proposal should exceed this. | Check the current tx limit and compare it to the one consumed by the proposal.
 
 ---
 

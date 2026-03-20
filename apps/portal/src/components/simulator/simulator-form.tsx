@@ -12,9 +12,12 @@ interface SimulatorFormProps {
   isLoading?: boolean;
   refreshTestnets: boolean;
   onRefreshTestnetsChange: (value: boolean) => void;
+  deleteOldTestnets: boolean;
+  onDeleteOldTestnetsChange: (value: boolean) => void;
+  testnetInfo: Record<string, { displayName?: string }>;
 }
 
-export function SimulatorForm({ onSubmit, isLoading, refreshTestnets, onRefreshTestnetsChange }: SimulatorFormProps) {
+export function SimulatorForm({ onSubmit, isLoading, refreshTestnets, onRefreshTestnetsChange, deleteOldTestnets, onDeleteOldTestnetsChange, testnetInfo }: SimulatorFormProps) {
   const [activeTab, setActiveTab] = React.useState("id");
   const [proposalId, setProposalId] = React.useState("");
   const [calldata, setCalldata] = React.useState("");
@@ -36,7 +39,7 @@ export function SimulatorForm({ onSubmit, isLoading, refreshTestnets, onRefreshT
           setError("Please enter a valid proposal ID (non-negative integer)");
           return;
         }
-        onSubmit({ type: "id", proposalId: id, mode, backend, refreshTestnets });
+        onSubmit({ type: "id", proposalId: id, mode, backend, refreshTestnets, deleteOldTestnets });
         break;
       }
       case "calldata": {
@@ -53,7 +56,7 @@ export function SimulatorForm({ onSubmit, isLoading, refreshTestnets, onRefreshT
           setError("Calldata must contain only hexadecimal characters");
           return;
         }
-        onSubmit({ type: "calldata", calldata: trimmed, mode, backend, refreshTestnets });
+        onSubmit({ type: "calldata", calldata: trimmed, mode, backend, refreshTestnets, deleteOldTestnets });
         break;
       }
       case "json": {
@@ -74,6 +77,7 @@ export function SimulatorForm({ onSubmit, isLoading, refreshTestnets, onRefreshT
             mode,
             backend,
             refreshTestnets,
+            deleteOldTestnets,
           });
         } catch {
           setError("Invalid JSON format");
@@ -182,34 +186,81 @@ export function SimulatorForm({ onSubmit, isLoading, refreshTestnets, onRefreshT
         </TabsContent>
       </Tabs>
 
-      {/* Refresh Testnets Toggle */}
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          role="switch"
-          aria-checked={refreshTestnets}
-          onClick={() => onRefreshTestnetsChange(!refreshTestnets)}
-          disabled={isLoading}
-          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
-            refreshTestnets ? "bg-slate-900" : "bg-slate-200"
-          }`}
-          data-testid="refresh-testnets-toggle"
-        >
-          <span
-            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-              refreshTestnets ? "translate-x-5" : "translate-x-0"
+      {/* Tenderly Testnet Toggles */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={refreshTestnets}
+            onClick={() => onRefreshTestnetsChange(!refreshTestnets)}
+            disabled={isLoading}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+              refreshTestnets ? "bg-slate-900" : "bg-slate-200"
             }`}
-          />
-        </button>
-        <div>
-          <label className="text-sm font-medium text-slate-700 cursor-pointer" onClick={() => onRefreshTestnetsChange(!refreshTestnets)}>
-            Refresh Tenderly testnets
-          </label>
-          <p className="text-xs text-slate-500">
-            Delete and recreate virtual testnets for a clean state before simulation
-          </p>
+            data-testid="refresh-testnets-toggle"
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                refreshTestnets ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
+          <div>
+            <label className="text-sm font-medium text-slate-700 cursor-pointer" onClick={() => onRefreshTestnetsChange(!refreshTestnets)}>
+              Create new testnets
+            </label>
+            <p className="text-xs text-slate-500">
+              Create fresh virtual testnets for a clean state before simulation
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={deleteOldTestnets}
+            onClick={() => onDeleteOldTestnetsChange(!deleteOldTestnets)}
+            disabled={isLoading || !refreshTestnets}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${
+              deleteOldTestnets && refreshTestnets ? "bg-slate-900" : "bg-slate-200"
+            }`}
+            data-testid="delete-old-testnets-toggle"
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                deleteOldTestnets && refreshTestnets ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
+          <div>
+            <label className="text-sm font-medium text-slate-700 cursor-pointer" onClick={() => onDeleteOldTestnetsChange(!deleteOldTestnets)}>
+              Delete old testnets
+            </label>
+            <p className="text-xs text-slate-500">
+              Remove previous virtual testnets before creating new ones
+            </p>
+          </div>
         </div>
       </div>
+
+      {/* Current testnet hint when not creating new ones */}
+      {!refreshTestnets && Object.keys(testnetInfo).length > 0 && (
+        <div className="rounded-xl bg-slate-50 p-4 border border-slate-200">
+          <p className="text-xs font-medium text-slate-500 mb-2">Using existing testnets</p>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(testnetInfo).map(([chain, info]) => (
+              <span key={chain} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-xs text-slate-700">
+                <span className="font-medium">{chain}</span>
+                {info.displayName && (
+                  <span className="text-slate-400">{info.displayName}</span>
+                )}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Error */}
       {error && (
