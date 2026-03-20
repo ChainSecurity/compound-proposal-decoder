@@ -86,9 +86,10 @@ async function createVirtualTestnet(
 
   const now = new Date();
   const date = now.toISOString().slice(0, 10);
-  const time = now.toISOString().slice(11, 16).replace(":", "");
-  const idPart = proposalId ?? "unknown";
-  const slug = `pd-${idPart}-${date}-${time}-${chain}`;
+  const time = now.toISOString().slice(11, 19).replace(/:/g, "");
+  const rand = Math.random().toString(36).slice(2, 6);
+  const idPart = proposalId ?? "calldata";
+  const slug = `pd-${idPart}-${date}-${time}-${rand}-${chain}`;
   const displayName = `pd-${idPart}-${date}-${time}`;
 
   logger.step(`Creating virtual testnet for ${chain} (chainId: ${rawChainConfig.chainId})`);
